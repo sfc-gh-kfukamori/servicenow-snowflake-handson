@@ -4,10 +4,10 @@
 -- S3 に配置された IT インフラ イベントログ（5,000万行、10ファイル）を Snowflake にロードし、
 -- ウェアハウスサイズによるパフォーマンスの違いを体験します。
 --
--- 実行前に以下のプレースホルダーを置き換えてください:
---   <AWSアカウントID>  : AWS アカウント ID（12桁の数字）
---   <ロール名>         : S3 アクセス用の IAM ロール名
---   <バケット名>       : S3 バケット名
+-- AWS 連携情報:
+--   AWS アカウント ID : 484577546576
+--   IAM ロール        : oist-handson-snowflake-s3-role
+--   S3 バケット       : s3://oist-handson/handson/ (ap-northeast-1)
 -- =============================================================================
 
 USE ROLE ACCOUNTADMIN;
@@ -38,9 +38,9 @@ CREATE OR REPLACE TABLE IT_EVENT_LOGS (
 CREATE OR REPLACE STORAGE INTEGRATION s3_handson_integration
   TYPE = EXTERNAL_STAGE
   STORAGE_PROVIDER = 'S3'
-  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::<AWSアカウントID>:role/<ロール名>'
+  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::484577546576:role/oist-handson-snowflake-s3-role'
   ENABLED = TRUE
-  STORAGE_ALLOWED_LOCATIONS = ('s3://<バケット名>/handson/');
+  STORAGE_ALLOWED_LOCATIONS = ('s3://oist-handson/handson/');
 
 -- Snowflake 側の情報を確認（AWS IAM 信頼ポリシーに必要）
 DESC INTEGRATION s3_handson_integration;
@@ -52,7 +52,7 @@ DESC INTEGRATION s3_handson_integration;
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE STAGE S3_EVENT_STAGE
   STORAGE_INTEGRATION = s3_handson_integration
-  URL = 's3://<バケット名>/handson/'
+  URL = 's3://oist-handson/handson/'
   FILE_FORMAT = (
     TYPE = CSV
     COMPRESSION = GZIP

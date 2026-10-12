@@ -51,12 +51,10 @@ Snowflake から S3 バケットへのアクセスを許可する Storage Integr
 CREATE OR REPLACE STORAGE INTEGRATION s3_handson_integration
   TYPE = EXTERNAL_STAGE
   STORAGE_PROVIDER = 'S3'
-  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::<AWSアカウントID>:role/<ロール名>'
+  STORAGE_AWS_ROLE_ARN = 'arn:aws:iam::484577546576:role/oist-handson-snowflake-s3-role'
   ENABLED = TRUE
-  STORAGE_ALLOWED_LOCATIONS = ('s3://<バケット名>/handson/');
+  STORAGE_ALLOWED_LOCATIONS = ('s3://oist-handson/handson/');
 ```
-
-> **注意**: `<AWSアカウントID>`, `<ロール名>`, `<バケット名>` は講師から案内された値に置き換えてください。
 
 ### IAM 信頼ポリシーの設定（講師が事前に実施）
 
@@ -77,7 +75,7 @@ DESC INTEGRATION s3_handson_integration;
 -- =============================================
 CREATE OR REPLACE STAGE SERVICENOW_HANDSON.ANALYTICS.S3_EVENT_STAGE
   STORAGE_INTEGRATION = s3_handson_integration
-  URL = 's3://<バケット名>/handson/'
+  URL = 's3://oist-handson/handson/'
   FILE_FORMAT = (
     TYPE = CSV
     COMPRESSION = GZIP
