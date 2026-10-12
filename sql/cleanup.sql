@@ -56,11 +56,15 @@ DROP DATABASE IF EXISTS SERVICENOW_HANDSON;
 -- -----------------------------------------------------------------------------
 -- Step 8: Connector 関連オブジェクトの削除
 -- Connector の停止: Snowsight > Data Products > Connectors > Pause Connector
--- 認証関連オブジェクトは Connector が自動作成したものも含めて削除
+-- Connector アプリのアンインストール: Snowsight > Data Products > Connectors > アンインストール
+-- Connector が自動作成したオブジェクトも含めて全て削除
 -- -----------------------------------------------------------------------------
 DROP EXTERNAL ACCESS INTEGRATION IF EXISTS SNOWFLAKE_CONNECTOR_FOR_SERVICENOW_EXTERNAL_ACCESS_INTEGRATION;
+DROP EXTERNAL ACCESS INTEGRATION IF EXISTS SERVICENOW_EAI;
 DROP SECURITY INTEGRATION IF EXISTS SNOWFLAKE_CONNECTOR_FOR_SERVICENOW_SECURITY_INTEGRATION;
+DROP SECURITY INTEGRATION IF EXISTS SERVICENOW_OAUTH2;
 DROP SCHEMA IF EXISTS CONNECTORS_SECRET.SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
+DROP SCHEMA IF EXISTS CONNECTORS_SECRET.SERVICENOW;
 DROP DATABASE IF EXISTS CONNECTORS_SECRET;
 DROP SCHEMA IF EXISTS SERVICENOW_DEST_DB.DEST_SCHEMA;
 DROP DATABASE IF EXISTS SERVICENOW_DEST_DB;
@@ -69,3 +73,11 @@ DROP DATABASE IF EXISTS SERVICENOW_DEST_DB;
 -- Step 9: ウェアハウスサイズを元に戻す
 -- -----------------------------------------------------------------------------
 ALTER WAREHOUSE COMPUTE_WH SET WAREHOUSE_SIZE = 'XSMALL';
+
+-- -----------------------------------------------------------------------------
+-- Step 10: クリーンアップ後の確認
+-- 以下を実行して、ハンズオン関連のオブジェクトが残っていないことを確認
+-- -----------------------------------------------------------------------------
+SHOW DATABASES;
+SHOW INTEGRATIONS;
+SHOW APPLICATIONS;
