@@ -54,11 +54,17 @@ DROP STORAGE INTEGRATION IF EXISTS S3_HANDSON_INTEGRATION;
 DROP DATABASE IF EXISTS SERVICENOW_HANDSON;
 
 -- -----------------------------------------------------------------------------
--- Step 8: Connector 関連オブジェクトの削除
--- Connector の停止: Snowsight > Data Products > Connectors > Pause Connector
--- Connector アプリのアンインストール: Snowsight > Data Products > Connectors > アンインストール
--- Connector が自動作成したオブジェクトも含めて全て削除
+-- Step 8: Connector のアンインストール
+-- 重要: 先に Connector アプリを DROP してから、同期先 DB を DROP する。
+-- Connector は同期先スキーマにメタデータを書き出すため、
+-- スキーマ名を再利用するには先に Connector を完全に削除する必要がある。
+--
+-- 手順:
+--   1. Snowsight > Data Products > Connectors > Pause Connector
+--   2. 以下の SQL で Connector アプリを DROP
+--   3. その後に同期先 DB/スキーマを DROP
 -- -----------------------------------------------------------------------------
+DROP APPLICATION IF EXISTS SNOWFLAKE_CONNECTOR_FOR_SERVICENOW CASCADE;
 DROP EXTERNAL ACCESS INTEGRATION IF EXISTS SNOWFLAKE_CONNECTOR_FOR_SERVICENOW_EXTERNAL_ACCESS_INTEGRATION;
 DROP EXTERNAL ACCESS INTEGRATION IF EXISTS SERVICENOW_EAI;
 DROP SECURITY INTEGRATION IF EXISTS SNOWFLAKE_CONNECTOR_FOR_SERVICENOW_SECURITY_INTEGRATION;
