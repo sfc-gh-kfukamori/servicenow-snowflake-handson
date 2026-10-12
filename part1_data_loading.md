@@ -232,6 +232,7 @@ Snowsight の UI ウィザードを使って Connector を設定します。
 - **Warehouse**: `COMPUTE_WH`
 - **Destination Database**: `SERVICENOW_DEST_DB`
 - **Destination Schema**: `DEST_SCHEMA`
+- **Role**: `ACCOUNTADMIN`（Select existing から選択。同期データへの読み取りアクセスを持つロール）
 
 ### 4.4 Authentication（認証）
 
