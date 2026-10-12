@@ -213,7 +213,18 @@ SELECT 'TASK_SLA', COUNT(*) FROM SERVICENOW_DEST_DB.DEST_SCHEMA.TASK_SLA;
 | SYS_USER_GROUP | 50〜55件 |
 | TASK_SLA | 10〜20件 |
 
-### 5.3 データのサンプル確認
+### 5.3 Connector が同期した生データの確認
+
+```sql
+-- =============================================
+-- Step 5.3: 生データの確認（RAW カラム）
+-- =============================================
+SELECT * FROM SERVICENOW_DEST_DB.DEST_SCHEMA.INCIDENT LIMIT 5;
+```
+
+> **解説**: Connector が同期したテーブルは `SYS_ID`, `RAW`（VARIANT 型）, `IS_DELETED` 等のカラムで構成されています。`RAW` カラムに ServiceNow の全フィールドが JSON 形式で格納されています。
+
+### 5.4 RAW カラムを展開してデータ確認
 
 ```sql
 -- =============================================
