@@ -40,13 +40,14 @@ SELECT 'TASK_SLA', COUNT(*) FROM SERVICENOW_DEST_DB.DEST_SCHEMA.TASK_SLA;
 -- Step 5.3: インシデントデータのサンプル確認
 -- -----------------------------------------------------------------------------
 SELECT
-    NUMBER,
-    SHORT_DESCRIPTION,
-    PRIORITY,
-    STATE,
-    CATEGORY,
-    ASSIGNED_TO,
-    SYS_CREATED_ON,
-    CLOSED_AT
+    RAW:number::STRING AS number,
+    RAW:short_description::STRING AS short_description,
+    RAW:priority::STRING AS priority,
+    RAW:state::STRING AS state,
+    RAW:category::STRING AS category,
+    RAW:assigned_to:value::STRING AS assigned_to,
+    RAW:sys_created_on::STRING AS sys_created_on,
+    RAW:closed_at::STRING AS closed_at
 FROM SERVICENOW_DEST_DB.DEST_SCHEMA.INCIDENT
+WHERE IS_DELETED = FALSE
 LIMIT 10;
