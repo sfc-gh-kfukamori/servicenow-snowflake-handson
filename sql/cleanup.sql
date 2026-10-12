@@ -87,3 +87,15 @@ ALTER WAREHOUSE COMPUTE_WH SET WAREHOUSE_SIZE = 'XSMALL';
 SHOW DATABASES;
 SHOW INTEGRATIONS;
 SHOW APPLICATIONS;
+
+-- =============================================================================
+-- 【再セットアップ時の注意】
+-- Connector を再インストールして同じスキーマ名 (DEST_SCHEMA) を再利用する場合、
+-- ウィザードで「Selected schema is in use by the other connector instance」エラーが
+-- 出ることがあります。その場合は以下を実行してからウィザードを再試行してください:
+--
+-- CALL system$grant_ownership_to_application(
+--   'SNOWFLAKE_CONNECTOR_FOR_SERVICENOW', true,
+--   'SERVICENOW_DEST_DB', 'DEST_SCHEMA'
+-- );
+-- =============================================================================

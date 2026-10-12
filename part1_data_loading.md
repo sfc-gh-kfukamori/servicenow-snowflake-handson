@@ -168,6 +168,11 @@ Snowsight の UI ウィザードを使って Connector を設定します。
 - **Destination Schema**: `DEST_SCHEMA`
 - **Role**: `ACCOUNTADMIN`（Select existing から選択。同期データへの読み取りアクセスを持つロール）
 
+> **トラブルシューティング**: 「Selected schema is in use by the other connector instance」エラーが出る場合は、以前の Connector インスタンスのメタデータが残っています。以下を SQL ワークシートで実行してからウィザードを再試行してください：
+> ```sql
+> CALL system$grant_ownership_to_application('SNOWFLAKE_CONNECTOR_FOR_SERVICENOW', true, 'SERVICENOW_DEST_DB', 'DEST_SCHEMA');
+> ```
+
 ### 4.4 Authentication（認証）
 
 1. 認証方式で **OAuth2 Client Credentials [Recommended]** を選択
