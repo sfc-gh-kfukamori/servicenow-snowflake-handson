@@ -1,8 +1,12 @@
 -- =============================================================================
--- クリーンアップ: ハンズオンで作成した全オブジェクトの削除
+-- クリーンアップ: ハンズオンで作成したオブジェクトの削除
 -- =============================================================================
--- ハンズオン終了後にリソースを削除してクレジット消費を停止します。
--- 必要に応じて選択的に実行してください。
+-- ハンズオン終了後 or 再実行前にリソースを削除します。
+--
+-- 【重要】Connector はアンインストールしません。
+-- 同じ Connector インスタンスを維持することで、DEST_SCHEMA を再利用できます。
+-- Connector をアンインストールすると、スキーマ名が platform レベルでブロックされ、
+-- 同じ名前での再登録ができなくなります。
 -- =============================================================================
 
 USE ROLE ACCOUNTADMIN;
@@ -11,8 +15,6 @@ USE ROLE ACCOUNTADMIN;
 -- Step 1: Streamlit アプリの削除
 -- -----------------------------------------------------------------------------
 DROP STREAMLIT IF EXISTS SERVICENOW_HANDSON.ANALYTICS.IT_OPS_AGENT_APP;
-
--- ステージのクリーンアップ
 REMOVE @SERVICENOW_HANDSON.ANALYTICS.STREAMLIT_STAGE;
 DROP STAGE IF EXISTS SERVICENOW_HANDSON.ANALYTICS.STREAMLIT_STAGE;
 
@@ -54,48 +56,33 @@ DROP STORAGE INTEGRATION IF EXISTS S3_HANDSON_INTEGRATION;
 DROP DATABASE IF EXISTS SERVICENOW_HANDSON;
 
 -- -----------------------------------------------------------------------------
--- Step 8: Connector のアンインストール
--- 重要: 先に Connector アプリを DROP してから、同期先 DB を DROP する。
--- Connector は同期先スキーマにメタデータを書き出すため、
--- スキーマ名を再利用するには先に Connector を完全に削除する必要がある。
---
--- 手順:
---   1. Snowsight > Data Products > Connectors > Pause Connector
---   2. 以下の SQL で Connector アプリを DROP
---   3. その後に同期先 DB/スキーマを DROP
--- -----------------------------------------------------------------------------
-DROP APPLICATION IF EXISTS SNOWFLAKE_CONNECTOR_FOR_SERVICENOW CASCADE;
-DROP EXTERNAL ACCESS INTEGRATION IF EXISTS SNOWFLAKE_CONNECTOR_FOR_SERVICENOW_EXTERNAL_ACCESS_INTEGRATION;
-DROP EXTERNAL ACCESS INTEGRATION IF EXISTS SERVICENOW_EAI;
-DROP SECURITY INTEGRATION IF EXISTS SNOWFLAKE_CONNECTOR_FOR_SERVICENOW_SECURITY_INTEGRATION;
-DROP SECURITY INTEGRATION IF EXISTS SERVICENOW_OAUTH2;
-DROP SCHEMA IF EXISTS CONNECTORS_SECRET.SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-DROP SCHEMA IF EXISTS CONNECTORS_SECRET.SERVICENOW;
-DROP DATABASE IF EXISTS CONNECTORS_SECRET;
-DROP SCHEMA IF EXISTS SERVICENOW_DEST_DB.DEST_SCHEMA;
-DROP DATABASE IF EXISTS SERVICENOW_DEST_DB;
-
--- -----------------------------------------------------------------------------
--- Step 9: ウェアハウスサイズを元に戻す
+-- Step 8: ウェアハウスサイズを元に戻す
 -- -----------------------------------------------------------------------------
 ALTER WAREHOUSE COMPUTE_WH SET WAREHOUSE_SIZE = 'XSMALL';
 
 -- -----------------------------------------------------------------------------
--- Step 10: クリーンアップ後の確認
--- 以下を実行して、ハンズオン関連のオブジェクトが残っていないことを確認
+-- Step 9: クリーンアップ後の確認
 -- -----------------------------------------------------------------------------
+-- Connector 関連は残っていて正常:
+--   - APPLICATION: SNOWFLAKE_CONNECTOR_FOR_SERVICENOW
+--   - DATABASE: SERVICENOW_DEST_DB / CONNECTORS_SECRET
+--   - SECURITY INTEGRATION: SNOWFLAKE_CONNECTOR_FOR_SERVICENOW_SECURITY_INTEGRATION
+--   - EXTERNAL ACCESS INTEGRATION: SNOWFLAKE_CONNECTOR_FOR_SERVICENOW_EXTERNAL_ACCESS_INTEGRATION
+
 SHOW DATABASES;
 SHOW INTEGRATIONS;
 SHOW APPLICATIONS;
 
 -- =============================================================================
--- 【再セットアップ時の注意】
--- Connector を再インストールして同じスキーマ名 (DEST_SCHEMA) を再利用する場合、
--- ウィザードで「Selected schema is in use by the other connector instance」エラーが
--- 出ることがあります。その場合は以下を実行してからウィザードを再試行してください:
+-- 【完全リセットが必要な場合】
+-- Connector 自体もアンインストールする場合は、以下を順番に実行してください。
+-- ※ 再インストール後に同じスキーマ名 (DEST_SCHEMA) は使えなくなります。
 --
--- CALL system$grant_ownership_to_application(
---   'SNOWFLAKE_CONNECTOR_FOR_SERVICENOW', true,
---   'SERVICENOW_DEST_DB', 'DEST_SCHEMA'
--- );
+-- 1. Snowsight > Data Products > Connectors > Pause
+-- 2. DROP APPLICATION IF EXISTS SNOWFLAKE_CONNECTOR_FOR_SERVICENOW CASCADE;
+-- 3. DROP EXTERNAL ACCESS INTEGRATION IF EXISTS SNOWFLAKE_CONNECTOR_FOR_SERVICENOW_EXTERNAL_ACCESS_INTEGRATION;
+-- 4. DROP SECURITY INTEGRATION IF EXISTS SNOWFLAKE_CONNECTOR_FOR_SERVICENOW_SECURITY_INTEGRATION;
+-- 5. DROP SCHEMA IF EXISTS CONNECTORS_SECRET.SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
+-- 6. DROP DATABASE IF EXISTS CONNECTORS_SECRET;
+-- 7. DROP DATABASE IF EXISTS SERVICENOW_DEST_DB;
 -- =============================================================================
