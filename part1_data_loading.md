@@ -171,10 +171,17 @@ Snowsight の UI ウィザードを使って Connector を設定します。
 - **Destination Schema**: `DEST_SCHEMA`
 - **Role**: `ACCOUNTADMIN`（Select existing から選択。同期データへの読み取りアクセスを持つロール）
 
-> **トラブルシューティング**: 「Selected schema is in use by the other connector instance」エラーが出る場合は、以前の Connector インスタンスのメタデータが残っています。以下を SQL ワークシートで実行してからウィザードを再試行してください：
+> **トラブルシューティング**: 「Selected schema is in use by the other connector instance」エラーが出る場合：
+> 再インストール時に同じスキーマを再利用するには、**finalize 前に**以下を SQL ワークシートで実行してからウィザードを再試行してください：
 > ```sql
+> -- オーナーシップを新しい Connector インスタンスに移管
+> GRANT USAGE ON DATABASE SERVICENOW_DEST_DB TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
+> GRANT USAGE ON SCHEMA SERVICENOW_DEST_DB.DEST_SCHEMA TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
+> GRANT CREATE TABLE ON SCHEMA SERVICENOW_DEST_DB.DEST_SCHEMA TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
+> GRANT CREATE VIEW ON SCHEMA SERVICENOW_DEST_DB.DEST_SCHEMA TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
 > CALL system$grant_ownership_to_application('SNOWFLAKE_CONNECTOR_FOR_SERVICENOW', true, 'SERVICENOW_DEST_DB', 'DEST_SCHEMA');
 > ```
+> ※ クリーンアップ時に `GRANT OWNERSHIP ON ALL TABLES/VIEWS ... TO ROLE ACCOUNTADMIN` でオーナーシップを移管してからアンインストールすることで、この手順が有効になります。詳細は `sql/cleanup.sql` を参照。
 
 ### 4.4 Authentication（認証）
 
