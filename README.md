@@ -100,7 +100,7 @@ ServiceNow PDI
 
 | オブジェクト | 種類 | 説明 |
 |---|---|---|
-| `SERVICENOW_DEST_DB.DEST_SCHEMA` | Schema | Connector の同期先 |
+| `SERVICENOW_DEST_DB.SERVICENOW_DATA` | Schema | Connector の同期先 |
 | `SERVICENOW_HANDSON.ANALYTICS` | Schema | 分析用 |
 | `DT_INCIDENT_ENRICHED` | Dynamic Table | インシデント詳細（JOIN: incident + sys_user + sys_user_group） |
 | `DT_INCIDENT_DAILY_STATS` | Dynamic Table | 日別インシデント統計 |
