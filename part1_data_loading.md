@@ -119,32 +119,14 @@ Snowsight の SQL ワークシートで以下を実行します。
 -- =============================================
 USE ROLE ACCOUNTADMIN;
 
--- Connector のデータ保存先データベース・スキーマ
+-- Connector のデータ保存先データベース・スキーマを作成
 CREATE DATABASE IF NOT EXISTS SERVICENOW_DEST_DB;
 CREATE SCHEMA IF NOT EXISTS SERVICENOW_DEST_DB.DEST_SCHEMA;
 ```
 
-### 3.2 Connector への権限付与
+> **重要**: この後の GRANT 文や `system$grant_ownership_to_application` は実行しないでください。権限付与は全てウィザードが自動で行います。事前に GRANT 文を実行すると「Selected schema is in use by the other connector instance」エラーが発生します。
 
-```sql
--- =============================================
--- Step 3.2: Connector アプリケーションへの権限付与
--- =============================================
-GRANT EXECUTE TASK ON ACCOUNT TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-GRANT EXECUTE MANAGED TASK ON ACCOUNT TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-
-GRANT USAGE ON WAREHOUSE COMPUTE_WH TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-
-GRANT USAGE ON DATABASE SERVICENOW_DEST_DB TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-GRANT USAGE ON SCHEMA SERVICENOW_DEST_DB.DEST_SCHEMA TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-GRANT CREATE TABLE ON SCHEMA SERVICENOW_DEST_DB.DEST_SCHEMA TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-GRANT CREATE VIEW ON SCHEMA SERVICENOW_DEST_DB.DEST_SCHEMA TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-
--- 同期先スキーマの所有権を Connector に移譲（再セットアップ時のスキーマ競合を防止）
-CALL system$grant_ownership_to_application('SNOWFLAKE_CONNECTOR_FOR_SERVICENOW', true, 'SERVICENOW_DEST_DB', 'DEST_SCHEMA');
-```
-
-> **解説**: Connector アプリケーションが同期タスクの実行、ウェアハウスの使用、同期先スキーマへのテーブル・ビュー作成を行うための権限を付与します。認証関連のオブジェクト（Security Integration、Secret、Network Rule、External Access Integration）は、次の Step 4 のウィザードで Connector が自動的に作成するため、手動で作成する必要はありません。
+> **解説**: データベースとスキーマを作成するだけです。権限付与（GRANT）、認証オブジェクト（Security Integration、Secret、Network Rule、External Access Integration）は全てウィザードが自動で作成・設定します。
 
 
 
@@ -168,20 +150,8 @@ Snowsight の UI ウィザードを使って Connector を設定します。
 
 - **Warehouse**: `COMPUTE_WH`
 - **Destination Database**: `SERVICENOW_DEST_DB`
-- **Destination Schema**: `DEST_SCHEMA`
-- **Role**: `ACCOUNTADMIN`（Select existing から選択。同期データへの読み取りアクセスを持つロール）
-
-> **トラブルシューティング**: 「Selected schema is in use by the other connector instance」エラーが出る場合：
-> 再インストール時に同じスキーマを再利用するには、**finalize 前に**以下を SQL ワークシートで実行してからウィザードを再試行してください：
-> ```sql
-> -- オーナーシップを新しい Connector インスタンスに移管
-> GRANT USAGE ON DATABASE SERVICENOW_DEST_DB TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-> GRANT USAGE ON SCHEMA SERVICENOW_DEST_DB.DEST_SCHEMA TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-> GRANT CREATE TABLE ON SCHEMA SERVICENOW_DEST_DB.DEST_SCHEMA TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-> GRANT CREATE VIEW ON SCHEMA SERVICENOW_DEST_DB.DEST_SCHEMA TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-> CALL system$grant_ownership_to_application('SNOWFLAKE_CONNECTOR_FOR_SERVICENOW', true, 'SERVICENOW_DEST_DB', 'DEST_SCHEMA');
-> ```
-> ※ クリーンアップ時に `GRANT OWNERSHIP ON ALL TABLES/VIEWS ... TO ROLE ACCOUNTADMIN` でオーナーシップを移管してからアンインストールすることで、この手順が有効になります。詳細は `sql/cleanup.sql` を参照。
+- **Destination Schema**: 「**Select existing**」を選択し、`DEST_SCHEMA` を選択
+- **Role**: `ACCOUNTADMIN`（Select existing から選択）
 
 ### 4.4 Authentication（認証）
 
