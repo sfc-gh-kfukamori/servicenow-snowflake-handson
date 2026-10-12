@@ -122,76 +122,13 @@ USE ROLE ACCOUNTADMIN;
 -- Connector のデータ保存先データベース・スキーマ
 CREATE DATABASE IF NOT EXISTS SERVICENOW_DEST_DB;
 CREATE SCHEMA IF NOT EXISTS SERVICENOW_DEST_DB.DEST_SCHEMA;
-
--- Secret 格納用データベース・スキーマ
-CREATE DATABASE IF NOT EXISTS CONNECTORS_SECRET;
-CREATE SCHEMA IF NOT EXISTS CONNECTORS_SECRET.SERVICENOW;
 ```
 
-### 3.2 Security Integration の作成（OAuth2 用）
+### 3.2 Connector への権限付与
 
 ```sql
 -- =============================================
--- Step 3.2: Security Integration の作成
--- =============================================
--- <client_id> と <client_secret> を Step 2.2 でメモした値に置き換えてください
--- <your-instance> を PDI のインスタンス名に置き換えてください
-CREATE SECURITY INTEGRATION SERVICENOW_OAUTH2
-  TYPE = API_AUTHENTICATION
-  AUTH_TYPE = OAUTH2
-  OAUTH_CLIENT_AUTH_METHOD = CLIENT_SECRET_POST
-  OAUTH_CLIENT_ID = '<client_id>'
-  OAUTH_CLIENT_SECRET = '<client_secret>'
-  OAUTH_TOKEN_ENDPOINT = 'https://<your-instance>.service-now.com/oauth_token.do'
-  OAUTH_GRANT = 'CLIENT_CREDENTIALS'
-  OAUTH_ALLOWED_SCOPES = ('useraccount')
-  ENABLED = TRUE;
-```
-
-> **解説**: Security Integration は OAuth2 の認証フローを管理するオブジェクトです。Client ID/Secret を Snowflake 側に登録し、トークンエンドポイントを指定します。`CLIENT_CREDENTIALS` グラントタイプにより、ユーザーの操作なしでトークンを自動取得します。
-
-### 3.3 OAuth2 Secret の作成
-
-```sql
--- =============================================
--- Step 3.3: OAuth2 Secret の作成
--- =============================================
-CREATE SECRET CONNECTORS_SECRET.SERVICENOW.SERVICENOW_CREDS
-  TYPE = OAUTH2
-  API_AUTHENTICATION = SERVICENOW_OAUTH2
-  OAUTH_SCOPES = ('useraccount');
-```
-
-> **解説**: Secret は `TYPE = OAUTH2` で作成し、先ほどの Security Integration を `API_AUTHENTICATION` パラメータで参照します。Snowflake が自動的に Security Integration の情報を使ってアクセストークンを取得・更新します。
-
-### 3.4 ネットワークルールと External Access Integration の作成
-
-```sql
--- =============================================
--- Step 3.4: ネットワークルール作成
--- =============================================
--- <your-instance> を PDI のインスタンス名に置き換えてください
-CREATE NETWORK RULE CONNECTORS_SECRET.SERVICENOW.SERVICENOW_NETWORK_RULE
-  MODE = 'EGRESS'
-  TYPE = 'HOST_PORT'
-  VALUE_LIST = ('<your-instance>.service-now.com');
-
--- =============================================
--- Step 3.5: External Access Integration 作成
--- =============================================
-CREATE EXTERNAL ACCESS INTEGRATION SERVICENOW_EAI
-  ALLOWED_NETWORK_RULES = (CONNECTORS_SECRET.SERVICENOW.SERVICENOW_NETWORK_RULE)
-  ALLOWED_AUTHENTICATION_SECRETS = (CONNECTORS_SECRET.SERVICENOW.SERVICENOW_CREDS)
-  ENABLED = TRUE;
-```
-
-> **解説**: ネットワークルールで Snowflake から ServiceNow への通信を許可し、External Access Integration でネットワークルールと認証情報を紐付けます。
-
-### 3.5 Connector への権限付与
-
-```sql
--- =============================================
--- Step 3.6: Connector アプリケーションへの権限付与
+-- Step 3.2: Connector アプリケーションへの権限付与
 -- =============================================
 GRANT EXECUTE TASK ON ACCOUNT TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
 GRANT EXECUTE MANAGED TASK ON ACCOUNT TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
@@ -202,14 +139,11 @@ GRANT USAGE ON DATABASE SERVICENOW_DEST_DB TO APPLICATION SNOWFLAKE_CONNECTOR_FO
 GRANT USAGE ON SCHEMA SERVICENOW_DEST_DB.DEST_SCHEMA TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
 GRANT CREATE TABLE ON SCHEMA SERVICENOW_DEST_DB.DEST_SCHEMA TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
 GRANT CREATE VIEW ON SCHEMA SERVICENOW_DEST_DB.DEST_SCHEMA TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-
-GRANT USAGE ON INTEGRATION SERVICENOW_EAI TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-
-GRANT USAGE ON DATABASE CONNECTORS_SECRET TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-GRANT USAGE ON SCHEMA CONNECTORS_SECRET.SERVICENOW TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-GRANT READ ON SECRET CONNECTORS_SECRET.SERVICENOW.SERVICENOW_CREDS TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-GRANT USAGE ON SECRET CONNECTORS_SECRET.SERVICENOW.SERVICENOW_CREDS TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
 ```
+
+> **解説**: Connector アプリケーションが同期タスクの実行、ウェアハウスの使用、同期先スキーマへのテーブル・ビュー作成を行うための権限を付与します。認証関連のオブジェクト（Security Integration、Secret、Network Rule、External Access Integration）は、次の Step 4 のウィザードで Connector が自動的に作成するため、手動で作成する必要はありません。
+
+
 
 ---
 
@@ -241,8 +175,6 @@ Snowsight の UI ウィザードを使って Connector を設定します。
    - **ServiceNow Instance**: `<your-instance>`（`dev12345` の部分のみ）
    - **Client ID**: Step 2.2 でメモした Client ID
    - **Client Secret**: Step 2.2 でメモした Client Secret
-   - **Secret**: `CONNECTORS_SECRET.SERVICENOW.SERVICENOW_CREDS`
-   - **External Access Integration**: `SERVICENOW_EAI`
 3. **Connect** をクリック
 
 > **トラブルシューティング**: `access_denied` エラーが出る場合は、Step 2.1 のシステムプロパティ作成と Step 2.3 の Scope Restriction 設定を再確認してください。
@@ -337,7 +269,7 @@ Snowsight の **Data Products → Connectors → Snowflake Connector for Service
 
 1. ServiceNow PDI（個人開発インスタンス）を作成
 2. ServiceNow 側で OAuth2 Client Credentials の設定（システムプロパティ、OAuth アプリケーション、Application User、Scope Restriction）
-3. Snowflake 側で認証オブジェクトを作成（Security Integration、OAuth2 Secret、ネットワークルール、External Access Integration）
+3. Snowflake 側で同期先データベース・スキーマの作成と Connector への権限付与
 4. UI ウィザードで Connector を設定し、OAuth2 Client Credentials で接続
 5. 4 つのテーブル（incident, sys_user, sys_user_group, task_sla）の同期を開始・確認
 
