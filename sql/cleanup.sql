@@ -3,11 +3,12 @@
 -- =============================================================================
 -- 同じアカウントでハンズオンを再実行するためのクリーンアップ手順です。
 --
--- 【重要】Connector はアンインストールしません。
--- Connector をアンインストールすると、スキーマ名が Snowflake の platform レベルで
--- ブロックされ、再インストール後に同じスキーマ名を使えなくなります（既知の制限）。
--- Connector を残したまま、同期先スキーマを DROP → CREATE し直すことで、
--- 同じスキーマ名を再利用してハンズオンをやり直せます。
+-- 【重要】
+-- - Connector はアンインストールしません（アンインストールするとスキーマ名が
+--   永久にブロックされるため）。
+-- - GRANT 文や system$grant_ownership_to_application は実行しません
+--  （事前に権限付与するとウィザードで「schema is in use」エラーが発生するため）。
+-- - 同期先スキーマを DROP → CREATE し直し、ウィザードで再設定します。
 -- =============================================================================
 
 USE ROLE ACCOUNTADMIN;
@@ -54,32 +55,19 @@ ALTER WAREHOUSE COMPUTE_WH SET WAREHOUSE_SIZE = 'XSMALL';
 -- =============================================================================
 
 -- Step 9: 同期先スキーマを DROP して再作成
--- Connector が所有するテーブル/ビューもスキーマごと削除される
 DROP SCHEMA IF EXISTS SERVICENOW_DEST_DB.DEST_SCHEMA;
 CREATE SCHEMA SERVICENOW_DEST_DB.DEST_SCHEMA;
 
--- Step 10: 同期先スキーマの所有権を Connector に戻す
-CALL system$grant_ownership_to_application(
-  'SNOWFLAKE_CONNECTOR_FOR_SERVICENOW', true,
-  'SERVICENOW_DEST_DB', 'DEST_SCHEMA'
-);
-
--- Step 11: Connector に権限を再付与
-GRANT USAGE ON DATABASE SERVICENOW_DEST_DB
-  TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-GRANT USAGE ON SCHEMA SERVICENOW_DEST_DB.DEST_SCHEMA
-  TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-GRANT CREATE TABLE ON SCHEMA SERVICENOW_DEST_DB.DEST_SCHEMA
-  TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-GRANT CREATE VIEW ON SCHEMA SERVICENOW_DEST_DB.DEST_SCHEMA
-  TO APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
-
--- Step 12: Connector が自動作成した認証オブジェクトの削除
--- ※ 再設定時にウィザードが新しいオブジェクトを自動作成する
+-- Step 10: Connector が自動作成した認証オブジェクトの削除
+-- ウィザードで再設定時に新しいオブジェクトが自動作成される
 DROP EXTERNAL ACCESS INTEGRATION IF EXISTS SNOWFLAKE_CONNECTOR_FOR_SERVICENOW_EXTERNAL_ACCESS_INTEGRATION;
 DROP SECURITY INTEGRATION IF EXISTS SNOWFLAKE_CONNECTOR_FOR_SERVICENOW_SECURITY_INTEGRATION;
 DROP SCHEMA IF EXISTS CONNECTORS_SECRET.SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
 DROP DATABASE IF EXISTS CONNECTORS_SECRET;
+
+-- ※ GRANT 文や system$grant_ownership_to_application は実行しないこと。
+--   権限付与はウィザードが全て自動で行う。
+--   事前に GRANT を実行すると「schema is in use」エラーが発生する。
 
 -- =============================================================================
 -- Phase 3: クリーンアップ確認
@@ -95,22 +83,23 @@ SHOW APPLICATIONS;
 
 -- =============================================================================
 -- 【再セットアップ手順】
--- Phase 2 まで実行済みの状態から:
---   1. Snowsight > Data Products > Connectors を開く
---   2. SNOWFLAKE_CONNECTOR_FOR_SERVICENOW の Configure 画面で再設定
---      - Warehouse: COMPUTE_WH
---      - Destination DB: SERVICENOW_DEST_DB
---      - Destination Schema: DEST_SCHEMA（Select existing）
---      - Role: ACCOUNTADMIN
---   3. Authentication で ServiceNow 認証情報を再入力
---   4. Validate → テーブル同期を再開
+-- 1. Snowsight > Data Products > Connectors を開く
+-- 2. SNOWFLAKE_CONNECTOR_FOR_SERVICENOW の Configure 画面で再設定
+--    - Warehouse: COMPUTE_WH
+--    - Destination DB: SERVICENOW_DEST_DB
+--    - Destination Schema: DEST_SCHEMA（Select existing）
+--    - Role: ACCOUNTADMIN
+-- 3. Authentication で ServiceNow 認証情報を再入力
+-- 4. Validate → テーブル同期を再開
+--
+-- ※ GRANT 文は実行しない。ウィザードが全て自動で権限設定する。
 -- =============================================================================
 
 -- =============================================================================
 -- 【完全リセット（非推奨）】
 -- Connector 自体もアンインストールする場合は以下を実行。
 -- ※ 警告: 再インストール後に同じスキーマ名 (DEST_SCHEMA) は使えなくなります。
---          次回は新しいスキーマ名が必要です。これは Snowflake platform の既知の制限です。
+--          次回は新しいスキーマ名が必要です。
 --
 -- DROP APPLICATION IF EXISTS SNOWFLAKE_CONNECTOR_FOR_SERVICENOW CASCADE;
 -- DROP EXTERNAL ACCESS INTEGRATION IF EXISTS SNOWFLAKE_CONNECTOR_FOR_SERVICENOW_EXTERNAL_ACCESS_INTEGRATION;
