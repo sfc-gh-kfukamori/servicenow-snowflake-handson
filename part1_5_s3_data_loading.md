@@ -115,6 +115,12 @@ COPY INTO SERVICENOW_HANDSON.ANALYTICS.IT_EVENT_LOGS
 
 > **確認**: Query History でロード時間を記録してください。参考値：約30秒
 
+```sql
+-- ロード結果の確認
+SELECT COUNT(*) AS row_count FROM SERVICENOW_HANDSON.ANALYTICS.IT_EVENT_LOGS;
+SELECT * FROM SERVICENOW_HANDSON.ANALYTICS.IT_EVENT_LOGS LIMIT 5;
+```
+
 ### 4.2 テーブルをクリアして再ロード準備
 
 ```sql
