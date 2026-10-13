@@ -68,11 +68,7 @@ CREATE OR REPLACE SEMANTIC VIEW SERVICENOW_HANDSON.ANALYTICS.SERVICENOW_SEMANTIC
   -- ===== リレーション =====
   RELATIONSHIPS (
     incidents_to_daily AS
-      incidents (opened_at) REFERENCES daily_stats (report_date),
-    correlation_to_incidents AS
-      event_correlation (category) REFERENCES incidents (category),
-    event_logs_to_correlation AS
-      event_logs (category) REFERENCES event_correlation (category)
+      incidents (opened_at) REFERENCES daily_stats (report_date)
   )
 
   -- ===== ディメンション =====
