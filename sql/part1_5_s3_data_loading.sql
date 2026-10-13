@@ -77,7 +77,8 @@ ALTER WAREHOUSE COMPUTE_WH RESUME;
 
 COPY INTO IT_EVENT_LOGS
   FROM @S3_EVENT_STAGE
-  PATTERN = '.*it_event_logs_[0-9]+\.csv\.gz';
+  -- PATTERN = '.*it_event_logs_[0-9]+\.csv\.gz'
+  ;
 
 -- Record the load time from Query History
 
@@ -101,12 +102,16 @@ SELECT * FROM IT_EVENT_LOGS;
 -- than XS (1 node).
 -- -----------------------------------------------------------------------------
 ALTER WAREHOUSE COMPUTE_WH SET WAREHOUSE_SIZE = 'MEDIUM';
+
+show warehouses in account;
+
 ALTER WAREHOUSE COMPUTE_WH SUSPEND;
 ALTER WAREHOUSE COMPUTE_WH RESUME;
 
 COPY INTO IT_EVENT_LOGS
   FROM @S3_EVENT_STAGE
-  PATTERN = '.*it_event_logs_[0-9]+\.csv\.gz';
+ // PATTERN = '.*it_event_logs_[0-9]+\.csv\.gz'
+ ;
 
 -- Record the load time from Query History
 
@@ -159,3 +164,11 @@ LEFT JOIN DT_INCIDENT_ENRICHED i
     ON e.category = i.category
     AND DATE_TRUNC('day', e.timestamp) = DATE_TRUNC('day', i.opened_at)
 GROUP BY 1, 2;
+
+-- List and check status of Dynamic Tables
+SHOW DYNAMIC TABLES IN SCHEMA SERVICENOW_HANDSON.ANALYTICS;
+
+ALTER DYNAMIC TABLE DT_EVENT_INCIDENT_CORRELATION REFRESH;
+
+SELECT * FROM DT_EVENT_INCIDENT_CORRELATION
+ORDER BY incident_count DESC;
