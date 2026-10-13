@@ -4,12 +4,6 @@
 -- This script contains the Snowflake-side setup SQL for the ServiceNow Connector.
 -- For the ServiceNow-side OAuth2 configuration (Steps 1-2), refer to the
 -- guide (part1_data_loading.md).
---
--- [IMPORTANT] The wizard handles all permission grants (GRANT) and schema-related
--- settings automatically. Running GRANT statements or
--- system$grant_ownership_to_application in advance causes the error:
--- "Selected schema is in use by the other connector instance."
--- Only database and schema creation is performed here.
 -- =============================================================================
 
 USE ROLE ACCOUNTADMIN;
