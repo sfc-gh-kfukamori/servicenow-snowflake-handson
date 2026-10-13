@@ -88,8 +88,8 @@ SELECT * FROM IT_EVENT_LOGS LIMIT 5;
 -- -----------------------------------------------------------------------------
 TRUNCATE TABLE IT_EVENT_LOGS;
 
--- クリア確認（0行であること）
-SELECT COUNT(*) AS row_count FROM IT_EVENT_LOGS;
+-- クリア確認
+SELECT * FROM IT_EVENT_LOGS;
 
 -- -----------------------------------------------------------------------------
 -- Step 4.3: M（Medium）ウェアハウスでロード
