@@ -102,6 +102,17 @@ LEFT JOIN SERVICENOW_DEST_DB.DEST_SCHEMA.SYS_USER_GROUP g
     ON i.RAW:assignment_group:value::STRING = g.SYS_ID AND g.IS_DELETED = FALSE
 WHERE i.IS_DELETED = FALSE;
 
+-- List and check status of Dynamic Tables
+SHOW DYNAMIC TABLES IN SCHEMA SERVICENOW_HANDSON.ANALYTICS;
+
+ALTER DYNAMIC TABLE DT_INCIDENT_ENRICHED REFRESH;
+
+-- Incident details
+SELECT incident_number, short_description, priority_label, state_label,
+       assignment_group_name, assigned_to_name, mttr_hours, sla_met
+FROM DT_INCIDENT_ENRICHED
+LIMIT 10;
+
 -- -----------------------------------------------------------------------------
 -- Step 3: DT_INCIDENT_DAILY_STATS (Daily incident statistics)
 -- Aggregate DT_INCIDENT_ENRICHED to compute daily KPIs.
@@ -129,6 +140,17 @@ SELECT
 FROM DT_INCIDENT_ENRICHED
 WHERE opened_at IS NOT NULL
 GROUP BY DATE_TRUNC('day', opened_at)::DATE, DAYNAME(opened_at);
+
+-- List and check status of Dynamic Tables
+SHOW DYNAMIC TABLES IN SCHEMA SERVICENOW_HANDSON.ANALYTICS;
+
+ALTER DYNAMIC TABLE DT_INCIDENT_DAILY_STATS REFRESH;
+
+-- Daily statistics
+SELECT report_date, total_incidents, resolved_incidents, avg_mttr_hours, sla_compliance_pct
+FROM DT_INCIDENT_DAILY_STATS
+ORDER BY report_date DESC
+LIMIT 10;
 
 -- -----------------------------------------------------------------------------
 -- Step 4: DT_SLA_ANALYSIS (SLA achievement analysis)
@@ -167,6 +189,14 @@ LEFT JOIN SERVICENOW_DEST_DB.DEST_SCHEMA.INCIDENT i
     ON s.RAW:task:value::STRING = i.SYS_ID AND i.IS_DELETED = FALSE
 WHERE s.IS_DELETED = FALSE;
 
+-- List and check status of Dynamic Tables
+SHOW DYNAMIC TABLES IN SCHEMA SERVICENOW_HANDSON.ANALYTICS;
+
+-- SLA analysis
+SELECT incident_number, incident_description, stage, has_breached, percentage, duration_hours
+FROM DT_SLA_ANALYSIS
+LIMIT 10;
+
 -- -----------------------------------------------------------------------------
 -- Step 5: DT_TEAM_PERFORMANCE (Team-level performance)
 -- Aggregate incident response metrics by assignment group.
@@ -198,40 +228,50 @@ WHERE assignment_group_name IS NOT NULL
   AND assignment_group_name != ''
 GROUP BY assignment_group_name;
 
--- -----------------------------------------------------------------------------
--- Step 6: Manual refresh (execute during the hands-on to view data immediately)
--- Normally, auto-refresh occurs based on TARGET_LAG
--- -----------------------------------------------------------------------------
-ALTER DYNAMIC TABLE DT_INCIDENT_ENRICHED REFRESH;
-ALTER DYNAMIC TABLE DT_INCIDENT_DAILY_STATS REFRESH;
-ALTER DYNAMIC TABLE DT_SLA_ANALYSIS REFRESH;
-ALTER DYNAMIC TABLE DT_TEAM_PERFORMANCE REFRESH;
-
--- -----------------------------------------------------------------------------
--- Step 7: Verify data
--- -----------------------------------------------------------------------------
-
 -- List and check status of Dynamic Tables
 SHOW DYNAMIC TABLES IN SCHEMA SERVICENOW_HANDSON.ANALYTICS;
 
--- Incident details
-SELECT incident_number, short_description, priority_label, state_label,
-       assignment_group_name, assigned_to_name, mttr_hours, sla_met
-FROM DT_INCIDENT_ENRICHED
-LIMIT 10;
-
--- Daily statistics
-SELECT report_date, total_incidents, resolved_incidents, avg_mttr_hours, sla_compliance_pct
-FROM DT_INCIDENT_DAILY_STATS
-ORDER BY report_date DESC
-LIMIT 10;
-
--- SLA analysis
-SELECT incident_number, incident_description, stage, has_breached, percentage, duration_hours
-FROM DT_SLA_ANALYSIS
-LIMIT 10;
+ALTER DYNAMIC TABLE DT_TEAM_PERFORMANCE REFRESH;
 
 -- Team-level performance
 SELECT assignment_group, total_incidents, avg_mttr_hours, sla_compliance_pct
 FROM DT_TEAM_PERFORMANCE
 ORDER BY total_incidents DESC;
+
+-- -- -----------------------------------------------------------------------------
+-- -- Step 6: Manual refresh (execute during the hands-on to view data immediately)
+-- -- Normally, auto-refresh occurs based on TARGET_LAG
+-- -- -----------------------------------------------------------------------------
+-- ALTER DYNAMIC TABLE DT_INCIDENT_ENRICHED REFRESH;
+-- ALTER DYNAMIC TABLE DT_INCIDENT_DAILY_STATS REFRESH;
+-- ALTER DYNAMIC TABLE DT_SLA_ANALYSIS REFRESH;
+-- ALTER DYNAMIC TABLE DT_TEAM_PERFORMANCE REFRESH;
+
+-- -- -----------------------------------------------------------------------------
+-- -- Step 7: Verify data
+-- -- -----------------------------------------------------------------------------
+
+-- -- List and check status of Dynamic Tables
+-- SHOW DYNAMIC TABLES IN SCHEMA SERVICENOW_HANDSON.ANALYTICS;
+
+-- -- Incident details
+-- SELECT incident_number, short_description, priority_label, state_label,
+--        assignment_group_name, assigned_to_name, mttr_hours, sla_met
+-- FROM DT_INCIDENT_ENRICHED
+-- LIMIT 10;
+
+-- -- Daily statistics
+-- SELECT report_date, total_incidents, resolved_incidents, avg_mttr_hours, sla_compliance_pct
+-- FROM DT_INCIDENT_DAILY_STATS
+-- ORDER BY report_date DESC
+-- LIMIT 10;
+
+-- -- SLA analysis
+-- SELECT incident_number, incident_description, stage, has_breached, percentage, duration_hours
+-- FROM DT_SLA_ANALYSIS
+-- LIMIT 10;
+
+-- -- Team-level performance
+-- SELECT assignment_group, total_incidents, avg_mttr_hours, sla_compliance_pct
+-- FROM DT_TEAM_PERFORMANCE
+-- ORDER BY total_incidents DESC;
