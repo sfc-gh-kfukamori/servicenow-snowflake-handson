@@ -15,26 +15,38 @@ USE SCHEMA SERVICENOW_HANDSON.ANALYTICS;
 -- それを基に Cortex Search Service を構築する
 -- -----------------------------------------------------------------------------
 
--- 検索用ビュー: インシデントの主要情報をテキスト結合して検索可能にする
+-- 検索用ビュー: Connectorの生テーブルから直接参照
+-- （DT_INCIDENT_ENRICHEDはFULLリフレッシュのためCortex Searchと互換性がない）
 CREATE OR REPLACE VIEW V_INCIDENT_SEARCH AS
 SELECT
-    sys_id,
-    incident_number,
-    category,
-    priority_label,
-    state_label,
-    assignment_group_name,
-    -- 検索対象テキスト: 番号、説明、カテゴリ、優先度、状態、担当を結合
-    incident_number || ' ' ||
-    COALESCE(short_description, '') || ' ' ||
-    COALESCE(description, '') || ' ' ||
-    COALESCE(category, '') || ' ' ||
-    COALESCE(priority_label, '') || ' ' ||
-    COALESCE(state_label, '') || ' ' ||
-    COALESCE(assignment_group_name, '') || ' ' ||
-    COALESCE(assigned_to_name, '')
-    AS search_text
-FROM DYNAMIC_TABLE_REFRESH_BOUNDARY(DT_INCIDENT_ENRICHED);
+    i.SYS_ID AS sys_id,
+    i.RAW:number::STRING AS incident_number,
+    i.RAW:category::STRING AS category,
+    CASE i.RAW:priority::STRING
+        WHEN '1' THEN '1 - Critical'
+        WHEN '2' THEN '2 - High'
+        WHEN '3' THEN '3 - Moderate'
+        WHEN '4' THEN '4 - Low'
+        WHEN '5' THEN '5 - Planning'
+        ELSE i.RAW:priority::STRING
+    END AS priority_label,
+    CASE i.RAW:state::STRING
+        WHEN '1' THEN 'New'
+        WHEN '2' THEN 'In Progress'
+        WHEN '3' THEN 'On Hold'
+        WHEN '6' THEN 'Resolved'
+        WHEN '7' THEN 'Closed'
+        WHEN '8' THEN 'Canceled'
+        ELSE i.RAW:state::STRING
+    END AS state_label,
+    g.RAW:name::STRING AS assignment_group_name,
+    COALESCE(i.RAW:short_description::STRING, '') || ' ' ||
+    COALESCE(i.RAW:description::STRING, '') AS search_text
+FROM SERVICENOW_DEST_DB.DEST_SCHEMA.INCIDENT i
+LEFT JOIN SERVICENOW_DEST_DB.DEST_SCHEMA.SYS_USER_GROUP g
+    ON i.RAW:assignment_group:value::STRING = g.SYS_ID AND g.IS_DELETED = FALSE
+WHERE i.IS_DELETED = FALSE
+  AND i.RAW:short_description::STRING IS NOT NULL;
 
 -- Cortex Search Service: snowflake-arctic-embed-m-v1.5 で埋め込みベクトルを生成し、
 -- セマンティック検索を可能にする
