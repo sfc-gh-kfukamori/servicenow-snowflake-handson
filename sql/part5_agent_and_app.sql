@@ -34,7 +34,7 @@ SELECT
     COALESCE(assignment_group_name, '') || ' ' ||
     COALESCE(assigned_to_name, '')
     AS search_text
-FROM DT_INCIDENT_ENRICHED;
+FROM DYNAMIC_TABLE_REFRESH_BOUNDARY(DT_INCIDENT_ENRICHED);
 
 -- Cortex Search Service: snowflake-arctic-embed-m-v1.5 で埋め込みベクトルを生成し、
 -- セマンティック検索を可能にする
