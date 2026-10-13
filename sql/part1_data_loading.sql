@@ -38,11 +38,17 @@ SELECT 'TASK_SLA', COUNT(*) FROM SERVICENOW_DEST_DB.DEST_SCHEMA.TASK_SLA;
 -- All fields are stored in JSON format in the RAW column (VARIANT type)
 -- -----------------------------------------------------------------------------
 SELECT * FROM SERVICENOW_DEST_DB.DEST_SCHEMA.INCIDENT LIMIT 5;
+SELECT * FROM SERVICENOW_DEST_DB.DEST_SCHEMA.SYS_USER LIMIT 5;
+SELECT * FROM SERVICENOW_DEST_DB.DEST_SCHEMA.SYS_USER_GROUP LIMIT 5;
+SELECT * FROM SERVICENOW_DEST_DB.DEST_SCHEMA.TASK_SLA LIMIT 5;
 
 -- -----------------------------------------------------------------------------
 -- Step 5.4: Expand the RAW column to inspect incident data
 -- Use the RAW:field::TYPE syntax to extract required fields
 -- -----------------------------------------------------------------------------
+
+SELECT * FROM SERVICENOW_DEST_DB.DEST_SCHEMA.INCIDENT LIMIT 5;
+
 SELECT
     RAW:number::STRING AS number,
     RAW:short_description::STRING AS short_description,
