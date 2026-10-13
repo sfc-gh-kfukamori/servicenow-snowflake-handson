@@ -1,32 +1,35 @@
 -- =============================================================================
--- Part 1: ServiceNow Connector 設定 — Snowflake 側 SQL
+-- Part 1: ServiceNow Connector Setup — Snowflake-side SQL
 -- =============================================================================
--- このスクリプトは ServiceNow Connector の Snowflake 側セットアップ SQL をまとめたものです。
--- ServiceNow 側の OAuth2 設定（Step 1〜2）は手順書（part1_data_loading.md）を参照してください。
+-- This script contains the Snowflake-side setup SQL for the ServiceNow Connector.
+-- For the ServiceNow-side OAuth2 configuration (Steps 1-2), refer to the
+-- guide (part1_data_loading.md).
 --
--- 【重要】権限付与（GRANT）やスキーマ関連の設定は全てウィザードが自動で行います。
--- 事前に GRANT 文や system$grant_ownership_to_application を実行すると
--- 「Selected schema is in use by the other connector instance」エラーが発生します。
--- ここではデータベース・スキーマの作成のみを行います。
+-- [IMPORTANT] The wizard handles all permission grants (GRANT) and schema-related
+-- settings automatically. Running GRANT statements or
+-- system$grant_ownership_to_application in advance causes the error:
+-- "Selected schema is in use by the other connector instance."
+-- Only database and schema creation is performed here.
 -- =============================================================================
 
 USE ROLE ACCOUNTADMIN;
 
 -- -----------------------------------------------------------------------------
--- Step 3.1: ハンズオン用オブジェクトの作成
--- Connector のデータ保存先データベース・スキーマを作成
--- ※ ウィザードの Configure 画面で「Select existing」を選んで使用する
+-- Step 3.1: Create objects for the hands-on lab
+-- Create the database and schema where the Connector stores its data
+-- * Select "Select existing" in the wizard's Configure screen
 -- -----------------------------------------------------------------------------
 CREATE DATABASE IF NOT EXISTS SERVICENOW_DEST_DB;
 CREATE SCHEMA IF NOT EXISTS SERVICENOW_DEST_DB.DEST_SCHEMA;
 
--- この後は手順書（part1_data_loading.md）の Step 4 に従い、
--- Snowsight の UI ウィザードで Connector を設定してください。
--- 権限付与・認証オブジェクト作成は全てウィザードが自動で行います。
+-- Next, follow Step 4 in the guide (part1_data_loading.md) to configure
+-- the Connector via the Snowsight UI wizard.
+-- The wizard handles all permission grants and authentication object creation
+-- automatically.
 
 -- -----------------------------------------------------------------------------
--- Step 5.2: 同期データの行数確認
--- Connector の UI ウィザード設定（Step 4）完了後に実行
+-- Step 5.2: Verify synced data row counts
+-- Execute after completing the Connector UI wizard setup (Step 4)
 -- -----------------------------------------------------------------------------
 SELECT 'INCIDENT' AS table_name, COUNT(*) AS row_count FROM SERVICENOW_DEST_DB.DEST_SCHEMA.INCIDENT
 UNION ALL
@@ -37,14 +40,14 @@ UNION ALL
 SELECT 'TASK_SLA', COUNT(*) FROM SERVICENOW_DEST_DB.DEST_SCHEMA.TASK_SLA;
 
 -- -----------------------------------------------------------------------------
--- Step 5.3: Connector が同期した生データの確認
--- RAW カラム（VARIANT 型）にJSON形式で全フィールドが格納されている
+-- Step 5.3: Inspect raw data synced by the Connector
+-- All fields are stored in JSON format in the RAW column (VARIANT type)
 -- -----------------------------------------------------------------------------
 SELECT * FROM SERVICENOW_DEST_DB.DEST_SCHEMA.INCIDENT LIMIT 5;
 
 -- -----------------------------------------------------------------------------
--- Step 5.4: RAW カラムを展開してインシデントデータを確認
--- RAW:field::TYPE 構文で必要なフィールドを取り出す
+-- Step 5.4: Expand the RAW column to inspect incident data
+-- Use the RAW:field::TYPE syntax to extract required fields
 -- -----------------------------------------------------------------------------
 SELECT
     RAW:number::STRING AS number,

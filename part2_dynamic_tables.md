@@ -1,26 +1,26 @@
-# Part 2: Dynamic Tables でデータ加工パイプライン構築
+# Part 2: Building a Data Transformation Pipeline with Dynamic Tables
 
-## 概要
+## Overview
 
-このパートでは、ServiceNow Connector で同期された生データを Dynamic Tables を使って分析しやすい形に変換します。Dynamic Tables は宣言的なデータパイプラインで、ソースデータが更新されると自動的にリフレッシュされます。
+In this part, you will transform raw data synced by the ServiceNow Connector into an analysis-friendly format using Dynamic Tables. Dynamic Tables are declarative data pipelines that automatically refresh when source data is updated.
 
-## 前提条件
+## Prerequisites
 
-- Part 1 が完了し、以下のテーブルが同期済み：
+- Part 1 is completed, and the following tables are synced:
   - `SERVICENOW_DEST_DB.DEST_SCHEMA.INCIDENT`
   - `SERVICENOW_DEST_DB.DEST_SCHEMA.SYS_USER`
   - `SERVICENOW_DEST_DB.DEST_SCHEMA.SYS_USER_GROUP`
   - `SERVICENOW_DEST_DB.DEST_SCHEMA.TASK_SLA`
 
-> **注意**: Connector が同期したテーブルは VARIANT 形式（`RAW` カラム）で格納されています。Dynamic Tables で `RAW:field::TYPE` 構文を使ってフラット化します。
+> **Note**: Tables synced by the Connector are stored in VARIANT format (the `RAW` column). We use the `RAW:field::TYPE` syntax in Dynamic Tables to flatten the data.
 
 ---
 
-## Step 1: ハンズオン用データベース・スキーマの作成
+## Step 1: Create the Hands-on Database and Schema
 
 ```sql
 -- =============================================
--- Step 1: 分析用データベース・スキーマの作成
+-- Step 1: Create analytics database and schema
 -- =============================================
 USE ROLE ACCOUNTADMIN;
 
@@ -28,18 +28,18 @@ CREATE DATABASE IF NOT EXISTS SERVICENOW_HANDSON;
 CREATE SCHEMA IF NOT EXISTS SERVICENOW_HANDSON.ANALYTICS;
 ```
 
-> **解説**: 同期データ（`SERVICENOW_DEST_DB`）と分析用テーブル（`SERVICENOW_HANDSON`）を分離することで、役割を明確にします。
+> **Explanation**: By separating the synced data (`SERVICENOW_DEST_DB`) from the analytics tables (`SERVICENOW_HANDSON`), we keep the roles clearly defined.
 
 ---
 
-## Step 2: Dynamic Table 1 — インシデント詳細テーブル
+## Step 2: Dynamic Table 1 — Incident Detail Table
 
-インシデントデータとユーザー・グループデータを結合し、MTTR（平均復旧時間）と SLA 遵守判定を計算します。
+Join incident data with user and group data, and calculate MTTR (Mean Time to Repair) and SLA compliance.
 
 ```sql
 -- =============================================
 -- Step 2: DT_INCIDENT_ENRICHED
--- インシデント × ユーザー × グループ結合、MTTR・SLA 計算
+-- Incident x User x Group join, MTTR & SLA calculation
 -- =============================================
 USE SCHEMA SERVICENOW_HANDSON.ANALYTICS;
 
@@ -57,7 +57,7 @@ SELECT
     i.RAW:urgency::STRING                              AS urgency,
     i.RAW:impact::STRING                               AS impact,
     i.RAW:state::STRING                                AS state,
-    -- 優先度のラベルマッピング
+    -- Priority label mapping
     CASE i.RAW:priority::STRING
         WHEN '1' THEN '1 - Critical'
         WHEN '2' THEN '2 - High'
@@ -66,7 +66,7 @@ SELECT
         WHEN '5' THEN '5 - Planning'
         ELSE i.RAW:priority::STRING
     END                                                AS priority_label,
-    -- ステータスのラベルマッピング
+    -- State label mapping
     CASE i.RAW:state::STRING
         WHEN '1' THEN 'New'
         WHEN '2' THEN 'In Progress'
@@ -76,18 +76,18 @@ SELECT
         WHEN '8' THEN 'Canceled'
         ELSE i.RAW:state::STRING
     END                                                AS state_label,
-    -- グループ情報（sys_user_group と結合）
+    -- Group information (joined with sys_user_group)
     i.RAW:assignment_group:value::STRING               AS assignment_group_id,
     g.RAW:name::STRING                                 AS assignment_group_name,
-    -- 担当者情報（sys_user と結合）
+    -- Assignee information (joined with sys_user)
     i.RAW:assigned_to:value::STRING                    AS assigned_to_id,
     u.RAW:name::STRING                                 AS assigned_to_name,
     u.RAW:email::STRING                                AS assigned_to_email,
-    -- 日時（空文字列を安全にタイムスタンプ変換）
+    -- Timestamps (safely convert empty strings to timestamps)
     TRY_TO_TIMESTAMP_NTZ(i.RAW:opened_at::STRING)     AS opened_at,
     TRY_TO_TIMESTAMP_NTZ(i.RAW:resolved_at::STRING)   AS resolved_at,
     TRY_TO_TIMESTAMP_NTZ(i.RAW:closed_at::STRING)     AS closed_at,
-    -- MTTR（解決までの時間）を時間単位で計算
+    -- MTTR (time to resolution) calculated in hours
     CASE
         WHEN NULLIF(i.RAW:resolved_at::STRING, '') IS NOT NULL
          AND NULLIF(i.RAW:opened_at::STRING, '') IS NOT NULL
@@ -96,7 +96,7 @@ SELECT
                TRY_TO_TIMESTAMP_NTZ(i.RAW:resolved_at::STRING)) / 60.0, 2)
         ELSE NULL
     END                                                AS mttr_hours,
-    -- SLA 遵守判定（P1=4h, P2=8h, P3=24h, P4=72h）
+    -- SLA compliance check (P1=4h, P2=8h, P3=24h, P4=72h)
     CASE
         WHEN NULLIF(i.RAW:resolved_at::STRING, '') IS NULL THEN NULL
         WHEN i.RAW:priority::STRING = '1' AND DATEDIFF('hour',
@@ -122,22 +122,22 @@ LEFT JOIN SERVICENOW_DEST_DB.DEST_SCHEMA.SYS_USER_GROUP g
 WHERE i.IS_DELETED = FALSE;
 ```
 
-> **解説**:
-> - Connector が同期するデータは `RAW` カラム（VARIANT 型）に格納されます。`RAW:field::TYPE` でフラット化します
-> - 参照フィールド（`assigned_to`, `assignment_group`）は `{value: "sys_id", link: "..."}` のオブジェクト構造。`RAW:assigned_to:value::STRING` で sys_id を取得し、`SYS_USER` / `SYS_USER_GROUP` テーブルと結合
-> - 空文字列がタイムスタンプ変換でエラーになるため、`TRY_TO_TIMESTAMP_NTZ` と `NULLIF` を使用
-> - **MTTR**: `OPENED_AT` から `RESOLVED_AT` までの差分を時間単位で計算
-> - **SLA 遵守判定**: 優先度ごとに解決時間の閾値を設定（P1: 4h, P2: 8h, P3: 24h, P4: 72h）
-> - `TARGET_LAG = '1 hour'`: ソースデータ更新後、最大 1 時間以内にリフレッシュ
+> **Explanation**:
+> - Data synced by the Connector is stored in the `RAW` column (VARIANT type). Use `RAW:field::TYPE` to flatten it
+> - Reference fields (`assigned_to`, `assignment_group`) have an object structure like `{value: "sys_id", link: "..."}`. Extract the sys_id with `RAW:assigned_to:value::STRING` and join with the `SYS_USER` / `SYS_USER_GROUP` tables
+> - Empty strings cause errors during timestamp conversion, so `TRY_TO_TIMESTAMP_NTZ` and `NULLIF` are used
+> - **MTTR**: Calculated as the difference from `OPENED_AT` to `RESOLVED_AT` in hours
+> - **SLA Compliance Check**: Resolution time thresholds are set per priority (P1: 4h, P2: 8h, P3: 24h, P4: 72h)
+> - `TARGET_LAG = '1 hour'`: Refreshes within a maximum of 1 hour after source data is updated
 
 ---
 
-## Step 3: Dynamic Table 2 — 日別インシデント統計
+## Step 3: Dynamic Table 2 — Daily Incident Statistics
 
 ```sql
 -- =============================================
 -- Step 3: DT_INCIDENT_DAILY_STATS
--- 日別のインシデント集計
+-- Daily incident aggregation
 -- =============================================
 CREATE OR REPLACE DYNAMIC TABLE DT_INCIDENT_DAILY_STATS
   TARGET_LAG = '1 hour'
@@ -163,20 +163,20 @@ WHERE opened_at IS NOT NULL
 GROUP BY DATE_TRUNC('day', opened_at)::DATE, DAYNAME(opened_at);
 ```
 
-> **解説**:
-> - 日ごとのインシデント発生件数、解決件数、オープン件数を集計
-> - `sla_compliance_pct`: SLA 遵守率（%）
-> - `top_category`: その日で最も多いカテゴリ
-> - このテーブルは `DT_INCIDENT_ENRICHED` を参照するため、パイプラインとして連鎖します
+> **Explanation**:
+> - Aggregates daily incident counts, resolved counts, and open counts
+> - `sla_compliance_pct`: SLA compliance rate (%)
+> - `top_category`: The most frequent category for that day
+> - This table references `DT_INCIDENT_ENRICHED`, so it chains together as a pipeline
 
 ---
 
-## Step 4: Dynamic Table 3 — SLA 分析テーブル
+## Step 4: Dynamic Table 3 — SLA Analysis Table
 
 ```sql
 -- =============================================
 -- Step 4: DT_SLA_ANALYSIS
--- task_sla テーブルからSLA達成状況を分析
+-- Analyze SLA achievement status from the task_sla table
 -- =============================================
 CREATE OR REPLACE DYNAMIC TABLE DT_SLA_ANALYSIS
   TARGET_LAG = '1 hour'
@@ -208,20 +208,20 @@ LEFT JOIN SERVICENOW_DEST_DB.DEST_SCHEMA.INCIDENT i
 WHERE s.IS_DELETED = FALSE;
 ```
 
-> **解説**:
-> - `task_sla` テーブルと `incident` テーブルを結合し、SLA レコードにインシデント情報を付加
-> - `stage`: SLA の進捗状態（`achieved`, `breached`, `in_progress`, `cancelled` 等）
-> - `has_breached`: SLA が違反されたかどうか
-> - `percentage`: SLA の消費率（100% 超 = 違反）
+> **Explanation**:
+> - Joins the `task_sla` table with the `incident` table to enrich SLA records with incident information
+> - `stage`: The progress state of the SLA (`achieved`, `breached`, `in_progress`, `cancelled`, etc.)
+> - `has_breached`: Whether the SLA was breached
+> - `percentage`: SLA consumption rate (over 100% = breached)
 
 ---
 
-## Step 5: Dynamic Table 4 — チーム別パフォーマンス
+## Step 5: Dynamic Table 4 — Team Performance
 
 ```sql
 -- =============================================
 -- Step 5: DT_TEAM_PERFORMANCE
--- チーム（Assignment Group）別のパフォーマンス指標
+-- Performance metrics by team (Assignment Group)
 -- =============================================
 CREATE OR REPLACE DYNAMIC TABLE DT_TEAM_PERFORMANCE
   TARGET_LAG = '1 hour'
@@ -248,30 +248,30 @@ WHERE assignment_group_name IS NOT NULL
 GROUP BY assignment_group_name;
 ```
 
-> **解説**:
-> - チーム（Assignment Group）ごとのインシデント対応実績を集計
-> - `avg_mttr_hours`: チーム別の平均解決時間
-> - `sla_compliance_pct`: チーム別の SLA 遵守率
-> - `high_priority_count`: 高優先度（P1, P2）インシデントの件数
+> **Explanation**:
+> - Aggregates incident response results by team (Assignment Group)
+> - `avg_mttr_hours`: Average resolution time per team
+> - `sla_compliance_pct`: SLA compliance rate per team
+> - `high_priority_count`: Count of high-priority (P1, P2) incidents
 
 ---
 
-## Step 6: Dynamic Tables の確認
+## Step 6: Verify the Dynamic Tables
 
-### 6.1 Dynamic Tables の一覧確認
+### 6.1 Check the Dynamic Tables List
 
 ```sql
 -- =============================================
--- Step 6.1: Dynamic Tables の一覧と状態確認
+-- Step 6.1: Check the list and status of Dynamic Tables
 -- =============================================
 SHOW DYNAMIC TABLES IN SCHEMA SERVICENOW_HANDSON.ANALYTICS;
 ```
 
-### 6.2 手動リフレッシュの実行
+### 6.2 Execute Manual Refresh
 
 ```sql
 -- =============================================
--- Step 6.2: 手動リフレッシュ
+-- Step 6.2: Manual refresh
 -- =============================================
 ALTER DYNAMIC TABLE SERVICENOW_HANDSON.ANALYTICS.DT_INCIDENT_ENRICHED REFRESH;
 ALTER DYNAMIC TABLE SERVICENOW_HANDSON.ANALYTICS.DT_INCIDENT_DAILY_STATS REFRESH;
@@ -279,33 +279,33 @@ ALTER DYNAMIC TABLE SERVICENOW_HANDSON.ANALYTICS.DT_SLA_ANALYSIS REFRESH;
 ALTER DYNAMIC TABLE SERVICENOW_HANDSON.ANALYTICS.DT_TEAM_PERFORMANCE REFRESH;
 ```
 
-> **解説**: `ALTER DYNAMIC TABLE ... REFRESH` で即時リフレッシュを実行できます。通常は `TARGET_LAG` に基づいて自動リフレッシュされますが、ハンズオン中はデータをすぐ確認するために手動実行します。
+> **Explanation**: You can execute an immediate refresh with `ALTER DYNAMIC TABLE ... REFRESH`. Normally, automatic refreshes occur based on the `TARGET_LAG`, but during the hands-on session we execute them manually to verify data promptly.
 
-### 6.3 データ確認
+### 6.3 Verify the Data
 
 ```sql
 -- =============================================
--- Step 6.3: 各テーブルのデータ確認
+-- Step 6.3: Verify data in each table
 -- =============================================
 
--- インシデント詳細
+-- Incident details
 SELECT incident_number, short_description, priority_label, state_label,
        assignment_group_name, assigned_to_name, mttr_hours, sla_met
 FROM SERVICENOW_HANDSON.ANALYTICS.DT_INCIDENT_ENRICHED
 LIMIT 10;
 
--- 日別統計
+-- Daily statistics
 SELECT report_date, total_incidents, resolved_incidents, avg_mttr_hours, sla_compliance_pct
 FROM SERVICENOW_HANDSON.ANALYTICS.DT_INCIDENT_DAILY_STATS
 ORDER BY report_date DESC
 LIMIT 10;
 
--- SLA 分析
+-- SLA analysis
 SELECT incident_number, incident_description, stage, has_breached, percentage, duration_hours
 FROM SERVICENOW_HANDSON.ANALYTICS.DT_SLA_ANALYSIS
 LIMIT 10;
 
--- チーム別パフォーマンス
+-- Team performance
 SELECT assignment_group, total_incidents, avg_mttr_hours, sla_compliance_pct
 FROM SERVICENOW_HANDSON.ANALYTICS.DT_TEAM_PERFORMANCE
 ORDER BY total_incidents DESC;
@@ -313,7 +313,7 @@ ORDER BY total_incidents DESC;
 
 ---
 
-## パイプラインの構造
+## Pipeline Structure
 
 ```
 ServiceNow (Connector)
@@ -334,20 +334,20 @@ ServiceNow (Connector)
     │                  DT_SLA_ANALYSIS
 ```
 
-> **ポイント**: Dynamic Tables は宣言的パイプラインです。SQL の SELECT 文でロジックを定義するだけで、データの自動更新・依存関係の管理は Snowflake が行います。`TARGET_LAG` を設定するだけでリフレッシュスケジュールの管理が不要になります。
+> **Key Point**: Dynamic Tables are declarative pipelines. You only need to define the logic with a SQL SELECT statement, and Snowflake handles automatic data updates and dependency management. By simply setting `TARGET_LAG`, there is no need to manage refresh schedules.
 
 ---
 
-## まとめ
+## Summary
 
-このパートで実施したこと：
+What was accomplished in this part:
 
-1. 分析用データベース・スキーマ（`SERVICENOW_HANDSON.ANALYTICS`）を作成
-2. 4 つの Dynamic Tables を作成：
-   - `DT_INCIDENT_ENRICHED`: インシデント詳細（ユーザー・グループ結合、MTTR、SLA 判定）
-   - `DT_INCIDENT_DAILY_STATS`: 日別インシデント統計
-   - `DT_SLA_ANALYSIS`: SLA 達成状況分析（task_sla テーブル活用）
-   - `DT_TEAM_PERFORMANCE`: チーム別パフォーマンス
-3. 手動リフレッシュとデータ確認を実施
+1. Created the analytics database and schema (`SERVICENOW_HANDSON.ANALYTICS`)
+2. Created 4 Dynamic Tables:
+   - `DT_INCIDENT_ENRICHED`: Incident details (user/group joins, MTTR, SLA compliance)
+   - `DT_INCIDENT_DAILY_STATS`: Daily incident statistics
+   - `DT_SLA_ANALYSIS`: SLA achievement analysis (using the task_sla table)
+   - `DT_TEAM_PERFORMANCE`: Team performance
+3. Performed manual refreshes and verified the data
 
-**次のパート**: [Part 3: Snowflake Notebooks で分析・可視化](part3_analysis_notebook.md) に進みます。
+**Next Part**: Proceed to [Part 3: Analysis and Visualization with Snowflake Notebooks](part3_analysis_notebook.md).

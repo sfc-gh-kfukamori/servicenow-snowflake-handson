@@ -1,18 +1,18 @@
-# ServiceNow x Snowflake ハンズオン
+# ServiceNow x Snowflake Hands-On
 
-## IT運用インテリジェンス基盤の構築
+## Building an IT Operations Intelligence Platform
 
-ServiceNow のデータを Snowflake に取り込み、データ加工・分析・可視化・AI エージェントアプリまでをエンドツーエンドで構築するハンズオンです。
+This is a hands-on workshop that covers the end-to-end process of ingesting ServiceNow data into Snowflake, then performing data transformation, analysis, visualization, and building an AI agent application.
 
 ---
 
-## アーキテクチャ全体図
+## Overall Architecture Diagram
 
 ```
 ServiceNow PDI
   │
   │ Snowflake Connector for ServiceNow
-  │ （OAuth 2.0 認証・自動同期）
+  │ (OAuth 2.0 Authentication / Auto Sync)
   ▼
 ┌──────────────────────────────────────────────────────┐
 │                    Snowflake                          │
@@ -20,23 +20,24 @@ ServiceNow PDI
 │  ┌─────────────────────────┐ ┌───────────────────┐  │
 │  │ Raw Data (Connector)    │ │ S3 External Stage │  │
 │  │ incident, sys_user,     │ │ IT Event Logs     │  │
-│  │ sys_user_group, task_sla│ │ (500万行)          │  │
+│  │ sys_user_group, task_sla│ │ (5 million rows)  │  │
 │  └─────────────┬───────────┘ └────────┬──────────┘  │
 │                │                      │              │
 │                ▼                      ▼              │
 │  ┌─────────────────────────────────────────────────┐  │
-│  │ Dynamic Tables (分析用パイプライン)              │  │
-│  │  DT_INCIDENT_ENRICHED（JOIN: 3テーブル）        │  │
-│  │  DT_INCIDENT_DAILY_STATS（日別集計）            │  │
-│  │  DT_SLA_ANALYSIS（SLA分析）                     │  │
-│  │  DT_TEAM_PERFORMANCE（チーム別集計）            │  │
-│  │  DT_EVENT_INCIDENT_CORRELATION（突合分析）      │  │
+│  │ Dynamic Tables (Analytics Pipeline)             │  │
+│  │  DT_INCIDENT_ENRICHED (JOIN: 3 tables)          │  │
+│  │  DT_INCIDENT_DAILY_STATS (Daily Aggregation)    │  │
+│  │  DT_SLA_ANALYSIS (SLA Analysis)                 │  │
+│  │  DT_TEAM_PERFORMANCE (Per-Team Aggregation)     │  │
+│  │  DT_EVENT_INCIDENT_CORRELATION (Correlation)    │  │
 │  └──────┬──────────────────┬───────────────────────┘  │
 │         │                  │                           │
 │         ▼                  ▼                           │
 │  ┌─────────────┐  ┌──────────────────┐                │
 │  │ Notebooks   │  │ Semantic View    │                │
-│  │ (分析/可視化)│  │ + Cortex Analyst │                │
+│  │ (Analysis/  │  │ + Cortex Analyst │                │
+│  │  Viz)       │  │                  │                │
 │  └─────────────┘  └────────┬─────────┘                │
 │                            │                           │
 │                   ┌────────┴─────────┐                 │
@@ -48,79 +49,79 @@ ServiceNow PDI
 │                   ┌────────┴─────────┐                 │
 │                   │ Streamlit in     │                 │
 │                   │  Snowflake       │                 │
-│                   │ (ダッシュボード   │                 │
-│                   │  + AIチャット)   │                 │
+│                   │ (Dashboard       │                 │
+│                   │  + AI Chat)      │                 │
 │                   └──────────────────┘                 │
 └──────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## ハンズオン構成
+## Hands-On Structure
 
-| パート | 内容 | 使用するSnowflake機能 | 手順書 |
+| Part | Content | Snowflake Features Used | Guide |
 |---|---|---|---|
-| **Part 1** | データロード | Snowflake Connector for ServiceNow | [part1_data_loading.md](part1_data_loading.md) |
-| **Part 1.5** | 外部データロード | S3 External Stage, COPY INTO, ウェアハウスサイズ比較 | [part1_5_s3_data_loading.md](part1_5_s3_data_loading.md) |
-| **Part 2** | データ加工 | Dynamic Tables | [part2_dynamic_tables.md](part2_dynamic_tables.md) |
-| **Part 3** | 分析・可視化 | Snowflake Notebooks (SQL + Python) | [part3_analysis_notebook.md](part3_analysis_notebook.md) |
-| **Part 4** | 自然言語分析 | Semantic View, Cortex Analyst | [part4_semantic_view.md](part4_semantic_view.md) |
-| **Part 5** | AIエージェントアプリ | Cortex Agent, Cortex Search, Streamlit in Snowflake | [part5_ai_agent_app.md](part5_ai_agent_app.md) |
+| **Part 1** | Data Loading | Snowflake Connector for ServiceNow | [part1_data_loading.md](part1_data_loading.md) |
+| **Part 1.5** | External Data Loading | S3 External Stage, COPY INTO, Warehouse Size Comparison | [part1_5_s3_data_loading.md](part1_5_s3_data_loading.md) |
+| **Part 2** | Data Transformation | Dynamic Tables | [part2_dynamic_tables.md](part2_dynamic_tables.md) |
+| **Part 3** | Analysis & Visualization | Snowflake Notebooks (SQL + Python) | [part3_analysis_notebook.md](part3_analysis_notebook.md) |
+| **Part 4** | Natural Language Analysis | Semantic View, Cortex Analyst | [part4_semantic_view.md](part4_semantic_view.md) |
+| **Part 5** | AI Agent Application | Cortex Agent, Cortex Search, Streamlit in Snowflake | [part5_ai_agent_app.md](part5_ai_agent_app.md) |
 
 ---
 
-## 前提条件
+## Prerequisites
 
 ### Snowflake
-- Snowflake アカウント（ACCOUNTADMIN ロール）
-- Snowflake Connector for ServiceNow がインストール済み
-  - Snowflake Marketplace から「Snowflake Connector for ServiceNow」を取得・インストール
+- Snowflake account (ACCOUNTADMIN role)
+- Snowflake Connector for ServiceNow installed
+  - Obtain and install "Snowflake Connector for ServiceNow" from the Snowflake Marketplace
 
 ### ServiceNow
-- ServiceNow Developer Program アカウント
-- PDI（Personal Developer Instance）
-  - [developer.servicenow.com](https://developer.servicenow.com/) で無料で作成可能
+- ServiceNow Developer Program account
+- PDI (Personal Developer Instance)
+  - Can be created for free at [developer.servicenow.com](https://developer.servicenow.com/)
 
-> **ローカル環境は不要です。** すべてのステップは Snowsight（Snowflake の Web UI）上で完結します。
+> **No local environment is required.** All steps can be completed entirely within Snowsight (Snowflake's Web UI).
 
 ---
 
-## 使用する ServiceNow テーブル
+## ServiceNow Tables Used
 
-| テーブル名 | 説明 | 用途 | ServiceNow での確認方法 |
+| Table Name | Description | Purpose | How to Verify in ServiceNow |
 |---|---|---|---|
-| `incident` | インシデント管理 | メインの分析対象 | Incident > All |
-| `sys_user` | ユーザー情報 | 担当者情報の結合 | User Administration > Users |
-| `sys_user_group` | ユーザーグループ | チーム情報の結合 | User Administration > Groups |
-| `task_sla` | SLA 達成状況 | SLA 分析 | （システムテーブル — Snowflake 側で確認） |
+| `incident` | Incident Management | Primary analysis target | Incident > All |
+| `sys_user` | User Information | Joining assignee details | User Administration > Users |
+| `sys_user_group` | User Groups | Joining team information | User Administration > Groups |
+| `task_sla` | SLA Achievement Status | SLA Analysis | (System table — verify on the Snowflake side) |
 
 ---
 
-## 作成する Snowflake オブジェクト一覧
+## Snowflake Objects Created
 
-| オブジェクト | 種類 | 説明 |
+| Object | Type | Description |
 |---|---|---|
-| `SERVICENOW_DEST_DB.DEST_SCHEMA` | Schema | Connector の同期先 |
-| `SERVICENOW_HANDSON.ANALYTICS` | Schema | 分析用 |
-| `DT_INCIDENT_ENRICHED` | Dynamic Table | インシデント詳細（JOIN: incident + sys_user + sys_user_group） |
-| `DT_INCIDENT_DAILY_STATS` | Dynamic Table | 日別インシデント統計 |
-| `DT_SLA_ANALYSIS` | Dynamic Table | SLA 達成状況分析（JOIN: task_sla + incident） |
-| `DT_TEAM_PERFORMANCE` | Dynamic Table | チーム別パフォーマンス |
-| `IT_EVENT_LOGS` | Table | S3 からロードした IT イベントログ（5,000万行×10ファイル） |
-| `DT_EVENT_INCIDENT_CORRELATION` | Dynamic Table | イベントログ × インシデント突合分析 |
-| `S3_EVENT_STAGE` | External Stage | S3 バケットへの接続 |
-| `SERVICENOW_SEMANTIC_VIEW` | Semantic View | 自然言語分析用のメタデータ定義（6テーブル: インシデント+イベントログ） |
-| `INCIDENT_SEARCH_SERVICE` | Cortex Search Service | インシデント履歴の全文検索 |
-| `IT_OPS_AGENT` | Cortex Agent | AI エージェント（Analyst + Search、イベントログ分析対応） |
-| `IT_OPS_AGENT_APP` | Streamlit in Snowflake | ダッシュボード + AI チャット UI |
+| `SERVICENOW_DEST_DB.DEST_SCHEMA` | Schema | Connector sync destination |
+| `SERVICENOW_HANDSON.ANALYTICS` | Schema | For analytics |
+| `DT_INCIDENT_ENRICHED` | Dynamic Table | Incident details (JOIN: incident + sys_user + sys_user_group) |
+| `DT_INCIDENT_DAILY_STATS` | Dynamic Table | Daily incident statistics |
+| `DT_SLA_ANALYSIS` | Dynamic Table | SLA achievement analysis (JOIN: task_sla + incident) |
+| `DT_TEAM_PERFORMANCE` | Dynamic Table | Per-team performance |
+| `IT_EVENT_LOGS` | Table | IT event logs loaded from S3 (50 million rows x 10 files) |
+| `DT_EVENT_INCIDENT_CORRELATION` | Dynamic Table | Event log x incident correlation analysis |
+| `S3_EVENT_STAGE` | External Stage | Connection to S3 bucket |
+| `SERVICENOW_SEMANTIC_VIEW` | Semantic View | Metadata definition for natural language analysis (6 tables: incidents + event logs) |
+| `INCIDENT_SEARCH_SERVICE` | Cortex Search Service | Full-text search over incident history |
+| `IT_OPS_AGENT` | Cortex Agent | AI agent (Analyst + Search, with event log analysis support) |
+| `IT_OPS_AGENT_APP` | Streamlit in Snowflake | Dashboard + AI chat UI |
 
 ---
 
-## お客様への訴求ポイント
+## Key Value Propositions for Customers
 
-1. **ノーコード連携**: ServiceNow Connector でデータ取り込みを自動化。API 開発やバッチ処理は不要
-2. **宣言的パイプライン**: Dynamic Tables で SQL を書くだけ。スケジュール管理やエラーハンドリングは Snowflake が自動実行
-3. **AI 活用の容易さ**: Semantic View を定義するだけで自然言語分析が可能。AI/ML の専門知識は不要
-4. **エンドツーエンド**: データ取り込みから AI アプリまで Snowflake 上で完結。追加のインフラ不要
-5. **ガバナンス**: すべてのデータが Snowflake 内に集約され、ロールベースのアクセス制御を適用可能
-6. **スケーラビリティ**: ウェアハウスサイズを変更するだけでパフォーマンスが向上。SQL やインフラの変更は不要
+1. **No-Code Integration**: Automate data ingestion with the ServiceNow Connector. No API development or batch processing required
+2. **Declarative Pipelines**: Just write SQL with Dynamic Tables. Snowflake automatically handles scheduling and error handling
+3. **Easy AI Adoption**: Simply define a Semantic View to enable natural language analysis. No AI/ML expertise required
+4. **End-to-End**: Everything from data ingestion to AI applications is completed within Snowflake. No additional infrastructure needed
+5. **Governance**: All data is consolidated within Snowflake, enabling role-based access control
+6. **Scalability**: Improve performance simply by changing the warehouse size. No changes to SQL or infrastructure required

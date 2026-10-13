@@ -1,189 +1,189 @@
-# Part 4: Semantic View + Cortex Analyst 構築
+# Part 4: Semantic View + Cortex Analyst Setup
 
-## 概要
+## Overview
 
-このパートでは、Part 2 で作成した Dynamic Tables に対して Semantic View を定義し、自然言語でデータに問い合わせできる環境を構築します。Semantic View は Cortex Analyst のバックエンドとして機能し、Part 5 の AI エージェントアプリからも利用します。
+In this part, we define a Semantic View on the Dynamic Tables created in Part 2 to build an environment where data can be queried using natural language. The Semantic View serves as the backend for Cortex Analyst and will also be used by the AI agent app in Part 5.
 
-## 前提条件
+## Prerequisites
 
-- Part 2 が完了し、以下の Dynamic Tables にデータが存在：
+- Part 2 is complete and data exists in the following Dynamic Tables:
   - `SERVICENOW_HANDSON.ANALYTICS.DT_INCIDENT_ENRICHED`
   - `SERVICENOW_HANDSON.ANALYTICS.DT_INCIDENT_DAILY_STATS`
   - `SERVICENOW_HANDSON.ANALYTICS.DT_SLA_ANALYSIS`
   - `SERVICENOW_HANDSON.ANALYTICS.DT_TEAM_PERFORMANCE`
-- Part 1.5 が完了し、以下のテーブルにデータが存在：
-  - `SERVICENOW_HANDSON.ANALYTICS.IT_EVENT_LOGS`（5,000万行のイベントログ）
-  - `SERVICENOW_HANDSON.ANALYTICS.DT_EVENT_INCIDENT_CORRELATION`（イベント×インシデント突合）
+- Part 1.5 is complete and data exists in the following tables:
+  - `SERVICENOW_HANDSON.ANALYTICS.IT_EVENT_LOGS` (50 million event log rows)
+  - `SERVICENOW_HANDSON.ANALYTICS.DT_EVENT_INCIDENT_CORRELATION` (event x incident correlation)
 
 ---
 
-## Step 1: Semantic View の概念
+## Step 1: Semantic View Concepts
 
-Semantic View は、テーブルやビューに対して以下のメタデータを定義するオブジェクトです：
+A Semantic View is an object that defines the following metadata on tables and views:
 
-- **テーブル（Tables）**: 分析対象のテーブルを論理名で定義
-- **ディメンション（Dimensions）**: 分析軸（カテゴリ、日付、チーム等）
-- **メトリクス（Metrics）**: 集計指標（COUNT, SUM, AVG 等）
-- **リレーション（Relationships）**: テーブル間の結合条件
-- **VQR（Verified Queries）**: 検証済みクエリ（Cortex Analyst の精度向上に使用）
+- **Tables**: Define the analysis target tables with logical names
+- **Dimensions**: Analysis axes (category, date, team, etc.)
+- **Metrics**: Aggregation measures (COUNT, SUM, AVG, etc.)
+- **Relationships**: Join conditions between tables
+- **VQR (Verified Queries)**: Pre-verified queries (used to improve Cortex Analyst accuracy)
 
-これにより、Cortex Analyst は自然言語の質問を正確な SQL に変換できるようになります。
+This enables Cortex Analyst to accurately convert natural language questions into SQL.
 
 ---
 
-## Step 2: Semantic View の作成
+## Step 2: Creating the Semantic View
 
-以下の SQL を実行して Semantic View を作成します。
+Execute the following SQL to create the Semantic View.
 
 ```sql
 -- =============================================
--- Step 2: Semantic View の作成
+-- Step 2: Creating the Semantic View
 -- =============================================
 USE ROLE ACCOUNTADMIN;
 
 CREATE OR REPLACE SEMANTIC VIEW SERVICENOW_HANDSON.ANALYTICS.SERVICENOW_SEMANTIC_VIEW
 
-  -- ===== テーブル定義（PRIMARY KEY でテーブルの粒度を明示） =====
+  -- ===== Table Definitions (PRIMARY KEY to specify table granularity) =====
   TABLES (
     incidents AS SERVICENOW_HANDSON.ANALYTICS.DT_INCIDENT_ENRICHED
       PRIMARY KEY (sys_id)
-      COMMENT = 'インシデント詳細テーブル（1行=1インシデント）',
+      COMMENT = 'Incident detail table (1 row = 1 incident)',
     daily_stats AS SERVICENOW_HANDSON.ANALYTICS.DT_INCIDENT_DAILY_STATS
       PRIMARY KEY (report_date)
-      COMMENT = '日別インシデント統計（1行=1日）',
+      COMMENT = 'Daily incident statistics (1 row = 1 day)',
     sla_analysis AS SERVICENOW_HANDSON.ANALYTICS.DT_SLA_ANALYSIS
       PRIMARY KEY (sla_record_id)
-      COMMENT = 'SLA達成状況分析テーブル（1行=1SLAレコード）',
+      COMMENT = 'SLA achievement analysis table (1 row = 1 SLA record)',
     team_performance AS SERVICENOW_HANDSON.ANALYTICS.DT_TEAM_PERFORMANCE
       PRIMARY KEY (assignment_group)
-      COMMENT = 'チーム別パフォーマンスサマリー（1行=1チーム）',
+      COMMENT = 'Team performance summary (1 row = 1 team)',
     event_logs AS SERVICENOW_HANDSON.ANALYTICS.IT_EVENT_LOGS
       PRIMARY KEY (event_id)
-      COMMENT = 'ITインフラ イベントログ（1行=1イベント、5000万件）',
+      COMMENT = 'IT infrastructure event logs (1 row = 1 event, 50 million records)',
     event_correlation AS SERVICENOW_HANDSON.ANALYTICS.DT_EVENT_INCIDENT_CORRELATION
       PRIMARY KEY (event_date, category)
-      COMMENT = 'イベント×インシデント突合サマリー（日別カテゴリ別）'
+      COMMENT = 'Event x incident correlation summary (daily by category)'
   )
 
-  -- ===== リレーション =====
+  -- ===== Relationships =====
   RELATIONSHIPS (
     incidents_to_daily AS
       incidents (opened_at) REFERENCES daily_stats (report_date)
   )
 
-  -- ===== ディメンション =====
+  -- ===== Dimensions =====
   DIMENSIONS (
-    -- incidents テーブルのディメンション
+    -- incidents table dimensions
     incidents.dim_incident_number AS incident_number
-      COMMENT = 'インシデント番号（例: INC0000001）',
+      COMMENT = 'Incident number (e.g., INC0000001)',
     incidents.dim_short_description AS short_description
-      COMMENT = 'インシデントの概要説明',
+      COMMENT = 'Brief description of the incident',
     incidents.dim_category AS category
-      COMMENT = 'インシデントのカテゴリ（network, software, hardware, inquiry, database 等）',
+      COMMENT = 'Incident category (network, software, hardware, inquiry, database, etc.)',
     incidents.dim_priority_label AS priority_label
-      COMMENT = '優先度ラベル（1 - Critical, 2 - High, 3 - Moderate, 4 - Low, 5 - Planning）',
+      COMMENT = 'Priority label (1 - Critical, 2 - High, 3 - Moderate, 4 - Low, 5 - Planning)',
     incidents.dim_state_label AS state_label
-      COMMENT = 'インシデントの状態（New, In Progress, On Hold, Resolved, Closed, Canceled）',
+      COMMENT = 'Incident state (New, In Progress, On Hold, Resolved, Closed, Canceled)',
     incidents.dim_assignment_group AS assignment_group_name
-      COMMENT = '担当チーム名',
+      COMMENT = 'Assigned team name',
     incidents.dim_assigned_to AS assigned_to_name
-      COMMENT = '担当者の名前',
+      COMMENT = 'Assigned person name',
     incidents.dim_opened_at AS opened_at
-      COMMENT = 'インシデントがオープンされた日時',
+      COMMENT = 'Date and time the incident was opened',
     incidents.dim_resolved_at AS resolved_at
-      COMMENT = 'インシデントが解決された日時',
-    -- daily_stats テーブルのディメンション
+      COMMENT = 'Date and time the incident was resolved',
+    -- daily_stats table dimensions
     daily_stats.dim_report_date AS report_date
-      COMMENT = 'レポート日付',
+      COMMENT = 'Report date',
     daily_stats.dim_day_of_week AS day_of_week
-      COMMENT = '曜日',
+      COMMENT = 'Day of the week',
     daily_stats.dim_top_category AS top_category
-      COMMENT = 'その日で最も多いインシデントカテゴリ',
-    -- sla_analysis テーブルのディメンション
+      COMMENT = 'Most frequent incident category for the day',
+    -- sla_analysis table dimensions
     sla_analysis.dim_incident_number AS incident_number
-      COMMENT = 'SLAに関連するインシデント番号',
+      COMMENT = 'Incident number associated with the SLA',
     sla_analysis.dim_stage AS stage
-      COMMENT = 'SLAの進捗ステージ（achieved, breached, in_progress, cancelled, paused）',
+      COMMENT = 'SLA progress stage (achieved, breached, in_progress, cancelled, paused)',
     sla_analysis.dim_has_breached AS has_breached
-      COMMENT = 'SLA違反フラグ',
-    -- team_performance テーブルのディメンション
+      COMMENT = 'SLA breach flag',
+    -- team_performance table dimensions
     team_performance.dim_team_name AS assignment_group
-      COMMENT = '担当チーム名',
+      COMMENT = 'Assigned team name',
     team_performance.dim_top_category AS top_category
-      COMMENT = 'チームで最も多く対応するカテゴリ',
-    -- event_logs テーブルのディメンション
+      COMMENT = 'Most frequently handled category by the team',
+    -- event_logs table dimensions
     event_logs.dim_server_name AS server_name
-      COMMENT = 'サーバー名（app-server-01 等）',
+      COMMENT = 'Server name (e.g., app-server-01)',
     event_logs.dim_event_type AS event_type
-      COMMENT = 'イベント種別（INFO, WARNING, ERROR, CRITICAL）',
+      COMMENT = 'Event type (INFO, WARNING, ERROR, CRITICAL)',
     event_logs.dim_category AS category
-      COMMENT = 'イベントカテゴリ（network, software, hardware, inquiry, database）',
+      COMMENT = 'Event category (network, software, hardware, inquiry, database)',
     event_logs.dim_timestamp AS timestamp
-      COMMENT = 'イベント発生日時',
+      COMMENT = 'Event occurrence date and time',
     event_logs.dim_source_ip AS source_ip
-      COMMENT = 'イベント発生元IPアドレス',
-    -- event_correlation テーブルのディメンション
+      COMMENT = 'Source IP address of the event',
+    -- event_correlation table dimensions
     event_correlation.dim_event_date AS event_date
-      COMMENT = '突合日付',
+      COMMENT = 'Correlation date',
     event_correlation.dim_category AS category
-      COMMENT = '突合カテゴリ'
+      COMMENT = 'Correlation category'
   )
 
-  -- ===== メトリクス =====
+  -- ===== Metrics =====
   METRICS (
-    -- incidents テーブルのメトリクス
+    -- incidents table metrics
     incidents.avg_mttr AS AVG(mttr_hours)
-      COMMENT = '平均復旧時間（MTTR、時間単位）',
+      COMMENT = 'Mean Time to Repair (MTTR, in hours)',
     incidents.incident_count AS COUNT(*)
-      COMMENT = 'インシデント件数',
-    -- daily_stats テーブルのメトリクス
+      COMMENT = 'Incident count',
+    -- daily_stats table metrics
     daily_stats.ds_total_incidents AS SUM(total_incidents)
-      COMMENT = '総インシデント発生件数',
+      COMMENT = 'Total incident count',
     daily_stats.ds_resolved_incidents AS SUM(resolved_incidents)
-      COMMENT = '解決済みインシデント件数',
+      COMMENT = 'Resolved incident count',
     daily_stats.ds_avg_mttr AS AVG(avg_mttr_hours)
-      COMMENT = '日別平均MTTR（時間）',
+      COMMENT = 'Daily average MTTR (hours)',
     daily_stats.ds_sla_compliance AS AVG(sla_compliance_pct)
-      COMMENT = '日別SLA遵守率（%）',
-    -- sla_analysis テーブルのメトリクス
+      COMMENT = 'Daily SLA compliance rate (%)',
+    -- sla_analysis table metrics
     sla_analysis.sla_record_count AS COUNT(*)
-      COMMENT = 'SLAレコード件数',
+      COMMENT = 'SLA record count',
     sla_analysis.sla_avg_percentage AS AVG(percentage)
-      COMMENT = 'SLA平均消費率',
-    -- team_performance テーブルのメトリクス
+      COMMENT = 'Average SLA consumption rate',
+    -- team_performance table metrics
     team_performance.team_total_incidents AS SUM(total_incidents)
-      COMMENT = 'チーム総インシデント件数',
+      COMMENT = 'Team total incident count',
     team_performance.team_avg_mttr AS AVG(avg_mttr_hours)
-      COMMENT = 'チーム平均MTTR（時間）',
+      COMMENT = 'Team average MTTR (hours)',
     team_performance.team_sla_compliance AS AVG(sla_compliance_pct)
-      COMMENT = 'チームSLA遵守率（%）',
-    -- event_logs テーブルのメトリクス
+      COMMENT = 'Team SLA compliance rate (%)',
+    -- event_logs table metrics
     event_logs.event_log_count AS COUNT(*)
-      COMMENT = 'イベントログ件数',
+      COMMENT = 'Event log count',
     event_logs.critical_event_count AS COUNT_IF(event_type = 'CRITICAL')
-      COMMENT = 'CRITICALイベント件数',
+      COMMENT = 'CRITICAL event count',
     event_logs.error_event_count AS COUNT_IF(event_type = 'ERROR')
-      COMMENT = 'ERRORイベント件数',
-    -- event_correlation テーブルのメトリクス
+      COMMENT = 'ERROR event count',
+    -- event_correlation table metrics
     event_correlation.total_events AS SUM(event_count)
-      COMMENT = '突合集計：イベント総数',
+      COMMENT = 'Correlation aggregate: total event count',
     event_correlation.total_critical_events AS SUM(critical_event_count)
-      COMMENT = '突合集計：CRITICALイベント数',
+      COMMENT = 'Correlation aggregate: CRITICAL event count',
     event_correlation.total_incidents AS SUM(incident_count)
-      COMMENT = '突合集計：インシデント数',
+      COMMENT = 'Correlation aggregate: incident count',
     event_correlation.corr_avg_mttr AS AVG(avg_mttr_hours)
-      COMMENT = '突合集計：平均MTTR（時間）'
+      COMMENT = 'Correlation aggregate: average MTTR (hours)'
   )
 
-  COMMENT = 'ServiceNow IT運用データ + ITインフラ イベントログのSemantic View'
+  COMMENT = 'Semantic View for ServiceNow IT operations data + IT infrastructure event logs'
 
-  -- ===== Cortex Analyst カスタム指示 =====
-  AI_SQL_GENERATION '日本語で質問された場合は、日本語でカラムのエイリアスをつけてください。数値は小数点2桁で丸めてください。'
+  -- ===== Cortex Analyst Custom Instructions =====
+  AI_SQL_GENERATION 'When asked in Japanese, add Japanese aliases to columns. Round numbers to 2 decimal places.'
 
-  -- ===== 検証済みクエリ（VQR） =====
+  -- ===== Verified Queries (VQR) =====
   AI_VERIFIED_QUERIES (
     category_mttr AS (
-      QUESTION 'カテゴリ別のMTTRは？'
+      QUESTION 'What is the MTTR by category?'
       SQL 'SELECT category,
                  ROUND(AVG(mttr_hours), 2) AS avg_mttr_hours,
                  COUNT(*) AS incident_count
@@ -193,7 +193,7 @@ CREATE OR REPLACE SEMANTIC VIEW SERVICENOW_HANDSON.ANALYTICS.SERVICENOW_SEMANTIC
           ORDER BY avg_mttr_hours DESC'
     ),
     top_team AS (
-      QUESTION '最もインシデントが多いチームは？'
+      QUESTION 'Which team has the most incidents?'
       SQL 'SELECT assignment_group,
                  total_incidents,
                  avg_mttr_hours,
@@ -203,7 +203,7 @@ CREATE OR REPLACE SEMANTIC VIEW SERVICENOW_HANDSON.ANALYTICS.SERVICENOW_SEMANTIC
           LIMIT 10'
     ),
     sla_breach AS (
-      QUESTION 'SLA違反の件数は？'
+      QUESTION 'How many SLA breaches are there?'
       SQL 'SELECT stage,
             COUNT(*) AS record_count,
             COUNT(CASE WHEN has_breached = TRUE THEN 1 END) AS breached_count
@@ -212,7 +212,7 @@ CREATE OR REPLACE SEMANTIC VIEW SERVICENOW_HANDSON.ANALYTICS.SERVICENOW_SEMANTIC
           ORDER BY record_count DESC'
     ),
     priority_sla AS (
-      QUESTION '優先度別のSLA遵守率は？'
+      QUESTION 'What is the SLA compliance rate by priority?'
       SQL 'SELECT priority_label,
                  COUNT(*) AS total,
                  COUNT(CASE WHEN sla_met = TRUE THEN 1 END) AS sla_met_count,
@@ -224,128 +224,128 @@ CREATE OR REPLACE SEMANTIC VIEW SERVICENOW_HANDSON.ANALYTICS.SERVICENOW_SEMANTIC
           ORDER BY priority_label'
     ),
     event_log_summary AS (
-      QUESTION 'イベントログの総件数は？'
+      QUESTION 'What is the total event log count?'
       SQL 'SELECT COUNT(*) AS total_events, COUNT_IF(dim_event_type = ''CRITICAL'') AS critical_events, COUNT_IF(dim_event_type = ''ERROR'') AS error_events FROM __event_logs'
     ),
     event_category_summary AS (
-      QUESTION 'カテゴリ別のイベント数とインシデント数の比較は？'
+      QUESTION 'What is the comparison of event counts and incident counts by category?'
       SQL 'SELECT dim_category AS category, SUM(event_count) AS total_events, SUM(critical_event_count) AS critical_events, SUM(incident_count) AS incidents, ROUND(AVG(avg_mttr_hours), 2) AS avg_mttr FROM __event_correlation GROUP BY dim_category ORDER BY total_events DESC'
     )
   );
 ```
 
-> **解説**:
-> - **DDL 構文**: `CREATE SEMANTIC VIEW` は `TABLES`, `RELATIONSHIPS`, `DIMENSIONS`, `METRICS` の順で定義します
-> - `<table_alias>.<semantic_name> AS <sql_expression>` の形式でディメンション・メトリクスを定義
-> - `AI_SQL_GENERATION`: Cortex Analyst に対する SQL 生成時の指示（日本語エイリアス等）
-> - `AI_VERIFIED_QUERIES`: よくある質問と正しい SQL のペアを定義し、Cortex Analyst の精度を向上
+> **Notes**:
+> - **DDL syntax**: `CREATE SEMANTIC VIEW` is defined in the order of `TABLES`, `RELATIONSHIPS`, `DIMENSIONS`, `METRICS`
+> - Dimensions and metrics are defined in the format `<table_alias>.<semantic_name> AS <sql_expression>`
+> - `AI_SQL_GENERATION`: Instructions for Cortex Analyst during SQL generation (Japanese aliases, etc.)
+> - `AI_VERIFIED_QUERIES`: Define pairs of common questions and correct SQL to improve Cortex Analyst accuracy
 
 ---
 
-## Step 3: Semantic View の確認
+## Step 3: Verifying the Semantic View
 
 ```sql
 -- =============================================
--- Step 3: Semantic View の確認
+-- Step 3: Verifying the Semantic View
 -- =============================================
 
--- Semantic View の一覧
+-- List Semantic Views
 SHOW SEMANTIC VIEWS IN SCHEMA SERVICENOW_HANDSON.ANALYTICS;
 
--- Semantic View の詳細
+-- Semantic View details
 DESCRIBE SEMANTIC VIEW SERVICENOW_HANDSON.ANALYTICS.SERVICENOW_SEMANTIC_VIEW;
 ```
 
 ---
 
-## Step 4: Cortex Analyst で自然言語クエリのテスト
+## Step 4: Testing Natural Language Queries with Cortex Analyst
 
-### 4.1 Snowsight での実行方法
+### 4.1 How to Run in Snowsight
 
-1. Snowsight にログイン
-2. 左メニューから **AI & ML > Cortex Analyst** を選択
-3. Semantic View として `SERVICENOW_HANDSON.ANALYTICS.SERVICENOW_SEMANTIC_VIEW` を選択
-4. 以下のような質問を入力してテスト
+1. Log in to Snowsight
+2. Select **AI & ML > Cortex Analyst** from the left menu
+3. Select `SERVICENOW_HANDSON.ANALYTICS.SERVICENOW_SEMANTIC_VIEW` as the Semantic View
+4. Enter the following questions to test
 
-### 4.2 テスト質問例
+### 4.2 Test Question Examples
 
-#### 質問 1: カテゴリ分析（VQR あり）
+#### Question 1: Category Analysis (VQR available)
 ```
-カテゴリ別の平均MTTRを教えて
-```
-
-#### 質問 2: チーム比較（VQR あり）
-```
-最もインシデントが多いチームトップ5は？
+Show the average MTTR by category
 ```
 
-#### 質問 3: SLA 分析（VQR あり）
+#### Question 2: Team Comparison (VQR available)
 ```
-SLA違反の件数は？
-```
-
-#### 質問 4: 優先度別 SLA（VQR あり）
-```
-優先度別のSLA遵守率を見せて
+What are the top 5 teams with the most incidents?
 ```
 
-#### 質問 5: イベントログ件数（VQR あり）
+#### Question 3: SLA Analysis (VQR available)
 ```
-イベントログの総件数は？
-```
-
-#### 質問 6: イベント×インシデント相関（VQR あり）
-```
-カテゴリ別のイベント数とインシデント数の比較は？
+How many SLA breaches are there?
 ```
 
-#### 質問 7: 応用（VQR に無い質問）
+#### Question 4: SLA by Priority (VQR available)
 ```
-今月のインシデントで最も多いカテゴリは何？
-```
-
-#### 質問 8: 時系列分析
-```
-直近6ヶ月のインシデント件数の推移を月別に見せて
+Show the SLA compliance rate by priority
 ```
 
-> **ポイント**: VQR（検証済みクエリ）に定義した質問は高精度で回答されます。VQR に無い質問も、ディメンション・メトリクスの定義とコメントを基に SQL が生成されますが、精度が低い場合は VQR を追加して改善できます。
+#### Question 5: Event Log Count (VQR available)
+```
+What is the total event log count?
+```
+
+#### Question 6: Event x Incident Correlation (VQR available)
+```
+What is the comparison of event counts and incident counts by category?
+```
+
+#### Question 7: Advanced (question not in VQR)
+```
+What is the most common incident category this month?
+```
+
+#### Question 8: Time Series Analysis
+```
+Show the monthly incident count trend for the last 6 months
+```
+
+> **Tip**: Questions defined in VQR (Verified Queries) are answered with high accuracy. Questions not in VQR will also have SQL generated based on dimension/metric definitions and comments, but if accuracy is low, you can add VQRs to improve it.
 
 ---
 
-## Step 5: Cortex Analyst を SQL から呼び出す（オプション）
+## Step 5: Calling Cortex Analyst from SQL (Optional)
 
-プログラムから Cortex Analyst を呼び出す方法も確認しておきましょう。
+Let's also review how to call Cortex Analyst programmatically.
 
 ```sql
 -- =============================================
--- Step 5: SQL からの Cortex Analyst 呼び出し
+-- Step 5: Calling Cortex Analyst from SQL
 -- =============================================
 
--- 自然言語クエリを SQL に変換して実行
+-- Convert a natural language query to SQL and execute
 SELECT SNOWFLAKE.CORTEX.COMPLETE(
   'claude-3-5-sonnet',
-  'カテゴリ別のMTTRを教えて'
+  'Show the MTTR by category'
 );
 ```
 
-> **解説**: Cortex Analyst は Snowsight UI や Cortex Agent 経由で利用するのが一般的です。Part 5 では Cortex Agent を通じて Semantic View を活用します。
+> **Note**: Cortex Analyst is typically used via the Snowsight UI or through a Cortex Agent. In Part 5, we will use the Semantic View through a Cortex Agent.
 
 ---
 
-## まとめ
+## Summary
 
-このパートで実施したこと：
+What was accomplished in this part:
 
-1. Semantic View の概念（テーブル、ディメンション、メトリクス、リレーション、VQR）を理解
-2. 6 つのテーブルを持つ Semantic View を作成：
-   - `incidents`: インシデント詳細
-   - `daily_stats`: 日別統計
-   - `sla_analysis`: SLA 分析
-   - `team_performance`: チーム別パフォーマンス
-   - `event_logs`: ITインフラ イベントログ（5,000万件）
-   - `event_correlation`: イベント×インシデント突合サマリー
-3. 6 つの VQR（検証済みクエリ）を設定（インシデント分析 + イベントログ分析）
-4. Cortex Analyst で自然言語クエリをテスト
+1. Understood Semantic View concepts (tables, dimensions, metrics, relationships, VQR)
+2. Created a Semantic View with 6 tables:
+   - `incidents`: Incident details
+   - `daily_stats`: Daily statistics
+   - `sla_analysis`: SLA analysis
+   - `team_performance`: Team performance
+   - `event_logs`: IT infrastructure event logs (50 million records)
+   - `event_correlation`: Event x incident correlation summary
+3. Configured 6 VQRs (Verified Queries) (incident analysis + event log analysis)
+4. Tested natural language queries with Cortex Analyst
 
-**次のパート**: [Part 5: AI エージェントアプリ (App Runtime) 構築](part5_ai_agent_app.md) に進みます。
+**Next Part**: Proceed to [Part 5: AI Agent App (App Runtime) Setup](part5_ai_agent_app.md).

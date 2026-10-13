@@ -1,6 +1,6 @@
 """
-IT インフラ イベントログ生成スクリプト
-ServiceNow インシデントデータと突合可能な5000万行のイベントログを10ファイルに分割して生成する
+IT Infrastructure Event Log Generation Script
+Generates 50 million rows of event logs, split across 10 files, that can be correlated with ServiceNow incident data
 """
 import csv
 import gzip

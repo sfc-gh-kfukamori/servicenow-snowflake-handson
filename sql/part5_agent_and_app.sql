@@ -1,22 +1,24 @@
 -- =============================================================================
--- Part 5: AI エージェントアプリ（Cortex Agent + Streamlit in Snowflake）
+-- Part 5: AI Agent App (Cortex Agent + Streamlit in Snowflake)
 -- =============================================================================
--- Semantic View（データ分析）と Cortex Search Service（インシデント検索）を統合した
--- AI エージェントを作成し、Streamlit in Snowflake でダッシュボード+チャットUIを構築します。
+-- Create an AI agent that integrates the Semantic View (data analysis) and
+-- Cortex Search Service (incident search), and build a dashboard + chat UI
+-- with Streamlit in Snowflake.
 -- =============================================================================
 
 USE ROLE ACCOUNTADMIN;
 USE SCHEMA SERVICENOW_HANDSON.ANALYTICS;
 
 -- -----------------------------------------------------------------------------
--- Step 1: Cortex Search Service の作成
--- インシデント履歴の全文検索サービス
--- まずインシデント情報を検索用にまとめたビューを作成し、
--- それを基に Cortex Search Service を構築する
+-- Step 1: Create the Cortex Search Service
+-- Full-text search service for incident history.
+-- First, create a view that consolidates incident information for search,
+-- then build the Cortex Search Service on top of it.
 -- -----------------------------------------------------------------------------
 
--- 検索用ビュー: Connectorの生テーブルから直接参照
--- （DT_INCIDENT_ENRICHEDはFULLリフレッシュのためCortex Searchと互換性がない）
+-- Search view: References raw tables from the Connector directly
+-- (DT_INCIDENT_ENRICHED uses FULL refresh, which is incompatible with
+-- Cortex Search)
 CREATE OR REPLACE VIEW V_INCIDENT_SEARCH AS
 SELECT
     i.SYS_ID AS sys_id,
@@ -48,14 +50,14 @@ LEFT JOIN SERVICENOW_DEST_DB.DEST_SCHEMA.SYS_USER_GROUP g
 WHERE i.IS_DELETED = FALSE
   AND i.RAW:short_description::STRING IS NOT NULL;
 
--- Cortex Search Service: snowflake-arctic-embed-m-v1.5 で埋め込みベクトルを生成し、
--- セマンティック検索を可能にする
+-- Cortex Search Service: Generates embedding vectors using
+-- snowflake-arctic-embed-m-v1.5 to enable semantic search
 CREATE OR REPLACE CORTEX SEARCH SERVICE INCIDENT_SEARCH_SERVICE
   ON search_text
   ATTRIBUTES incident_number, category, priority_label
   WAREHOUSE = COMPUTE_WH
   TARGET_LAG = '1 hour'
-  COMMENT = 'インシデント履歴の全文検索サービス'
+  COMMENT = 'Full-text search service for incident history'
   AS (
   SELECT
     search_text,
@@ -69,39 +71,41 @@ CREATE OR REPLACE CORTEX SEARCH SERVICE INCIDENT_SEARCH_SERVICE
 );
 
 -- -----------------------------------------------------------------------------
--- Step 2: Cortex Agent の作成
--- Analyst（Semantic View経由のデータ分析）と Search（インシデント全文検索）を
--- 1つのエージェントに統合。自然言語で質問するだけで適切なツールを自動選択する。
+-- Step 2: Create the Cortex Agent
+-- Integrates Analyst (data analysis via Semantic View) and Search (incident
+-- full-text search) into a single agent. Simply ask a question in natural
+-- language and the appropriate tool is automatically selected.
 --
--- orchestration: auto → Snowflake が最適な LLM を自動選択
--- execution_environment: Analyst が SQL を実行するウェアハウスを指定（必須）
+-- orchestration: auto -> Snowflake automatically selects the optimal LLM
+-- execution_environment: Specifies the warehouse for Analyst SQL execution
+--                        (required)
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE AGENT IT_OPS_AGENT
-  COMMENT = 'IT運用支援AIエージェント - データ分析とインシデント検索を統合'
+  COMMENT = 'IT operations support AI agent - integrates data analysis and incident search'
   FROM SPECIFICATION
   $$
   models:
     orchestration: auto
 
   instructions:
-    response: "あなたはIT運用支援AIアシスタントです。日本語で回答してください。データ分析の結果には具体的な数値を含めてください。インシデント検索の結果にはインシデント番号を含めてください。"
-    orchestration: "定量的な分析（MTTR、SLA遵守率、件数、イベントログ分析など）にはAnalystツールを使用してください。過去のインシデントの詳細検索や類似インシデントの検索にはSearchツールを使用してください。イベントログ（IT_EVENT_LOGS）には5000万件のITインフライベントが含まれています。イベントとインシデントの相関分析にはDT_EVENT_INCIDENT_CORRELATIONを活用してください。"
+    response: "You are an IT operations support AI assistant. Please respond in the same language as the user's question. Include specific numbers in data analysis results. Include incident numbers in incident search results."
+    orchestration: "Use the Analyst tool for quantitative analysis (MTTR, SLA compliance rate, counts, event log analysis, etc.). Use the Search tool for detailed searches of past incidents or similar incident searches. The event logs (IT_EVENT_LOGS) contain 50 million IT infrastructure events. Use DT_EVENT_INCIDENT_CORRELATION for correlation analysis between events and incidents."
     sample_questions:
-      - question: "カテゴリ別のMTTRを教えて"
-      - question: "SLA違反の件数は？"
-      - question: "ネットワーク関連のインシデントを検索して"
-      - question: "イベントログの総件数は？"
-      - question: "カテゴリ別のイベント数とインシデント数の比較は？"
+      - question: "What is the MTTR by category?"
+      - question: "How many SLA violations are there?"
+      - question: "Search for network-related incidents"
+      - question: "What is the total number of event logs?"
+      - question: "What is the comparison of event count and incident count by category?"
 
   tools:
     - tool_spec:
         type: "cortex_analyst_text_to_sql"
         name: "Analyst"
-        description: "ServiceNowインシデントデータおよびITインフラ イベントログの定量分析（MTTR、SLA遵守率、チーム別パフォーマンス、イベントログ集計、イベント×インシデント相関分析等）"
+        description: "Quantitative analysis of ServiceNow incident data and IT infrastructure event logs (MTTR, SLA compliance rate, team performance, event log aggregation, event x incident correlation analysis, etc.)"
     - tool_spec:
         type: "cortex_search"
         name: "IncidentSearch"
-        description: "過去のインシデント履歴を全文検索（障害内容、対応策、類似インシデント等）"
+        description: "Full-text search of past incident history (failure details, remediation actions, similar incidents, etc.)"
 
   tool_resources:
     Analyst:
@@ -115,37 +119,38 @@ CREATE OR REPLACE AGENT IT_OPS_AGENT
   $$;
 
 -- -----------------------------------------------------------------------------
--- Step 3: Agent のテスト（SQL から実行）
--- DATA_AGENT_RUN の引数: エージェント名、リクエストボディ（$$...$$リテラル）
--- content は [{type: "text", text: "質問文"}] の配列形式で渡す
+-- Step 3: Test the Agent (execute from SQL)
+-- DATA_AGENT_RUN arguments: agent name, request body ($$...$$ literal)
+-- content is passed as an array in the format:
+-- [{type: "text", text: "question"}]
 -- -----------------------------------------------------------------------------
 SELECT TRY_PARSE_JSON(
   SNOWFLAKE.CORTEX.DATA_AGENT_RUN(
     'SERVICENOW_HANDSON.ANALYTICS.IT_OPS_AGENT',
-    $${"messages": [{"role": "user", "content": [{"type": "text", "text": "カテゴリ別のMTTRを教えて"}]}]}$$
+    $${"messages": [{"role": "user", "content": [{"type": "text", "text": "What is the MTTR by category?"}]}]}$$
   )
 ):content[2]:text::STRING AS agent_response;
 
 -- -----------------------------------------------------------------------------
--- Step 4: Streamlit in Snowflake のデプロイ
--- streamlit_app.py を内部ステージにアップロードし、STREAMLIT オブジェクトを作成
--- ステージはアプリのソースコード配置場所
+-- Step 4: Deploy Streamlit in Snowflake
+-- Upload streamlit_app.py to an internal stage and create a STREAMLIT object.
+-- The stage serves as the source code location for the app.
 -- -----------------------------------------------------------------------------
 
--- アプリ用の内部ステージを作成
+-- Create an internal stage for the app
 CREATE STAGE IF NOT EXISTS SERVICENOW_HANDSON.ANALYTICS.STREAMLIT_STAGE;
 
--- ローカルの streamlit_app.py をステージにアップロード
--- ※ Snowsight の場合は PUT コマンドではなく UI からアップロード
+-- Upload the local streamlit_app.py to the stage
+-- * For Snowsight, upload via the UI instead of using PUT
 PUT file://streamlit_app.py @SERVICENOW_HANDSON.ANALYTICS.STREAMLIT_STAGE
   AUTO_COMPRESS = FALSE
   OVERWRITE = TRUE;
 
--- Streamlit アプリの作成
+-- Create the Streamlit app
 CREATE OR REPLACE STREAMLIT SERVICENOW_HANDSON.ANALYTICS.IT_OPS_AGENT_APP
   ROOT_LOCATION = '@SERVICENOW_HANDSON.ANALYTICS.STREAMLIT_STAGE'
   MAIN_FILE = 'streamlit_app.py'
   QUERY_WAREHOUSE = COMPUTE_WH
-  COMMENT = 'ServiceNow IT運用データのダッシュボード＋Cortex Agentチャット';
+  COMMENT = 'ServiceNow IT operations data dashboard + Cortex Agent chat';
 
--- Snowsight 左メニュー > Streamlit から IT_OPS_AGENT_APP をクリックして開く
+-- Open IT_OPS_AGENT_APP from Snowsight left menu > Streamlit

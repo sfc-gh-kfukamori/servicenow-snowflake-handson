@@ -1,27 +1,27 @@
-# Part 1.5: AWS S3 からのデータロード（外部データ連携）
+# Part 1.5: Data Loading from AWS S3 (External Data Integration)
 
-## 概要
+## Overview
 
-AWS S3 に配置された IT インフラ イベントログ（5,000万行、約2GB × 10ファイル）を Snowflake にロードします。ウェアハウスサイズの変更によるロードパフォーマンスの違いも体験します。
+Load IT infrastructure event logs (50 million rows, approx. 2GB x 10 files) stored on AWS S3 into Snowflake. You will also experience the difference in load performance when changing warehouse sizes.
 
-## 前提条件
+## Prerequisites
 
-- Part 1 が完了し、ServiceNow データが同期済み
-- 講師が事前に S3 バケットにイベントログファイルを配置済み
+- Part 1 is completed, and ServiceNow data is synced
+- The instructor has pre-placed event log files in the S3 bucket
 
-## このパートで学ぶこと
+## What You Will Learn in This Part
 
-- External Stage を使った S3 からのデータロード（COPY INTO）
-- ウェアハウスサイズとロードパフォーマンスの関係
-- 外部データと ServiceNow データの突合分析
+- Data loading from S3 using External Stage (COPY INTO)
+- The relationship between warehouse size and load performance
+- Cross-referencing analysis between external data and ServiceNow data
 
 ---
 
-## Step 1: ロード先テーブルの作成
+## Step 1: Create the Destination Table
 
 ```sql
 -- =============================================
--- Step 1: イベントログテーブルの作成
+-- Step 1: Create event log table
 -- =============================================
 USE ROLE ACCOUNTADMIN;
 USE SCHEMA SERVICENOW_HANDSON.ANALYTICS;
@@ -40,13 +40,13 @@ CREATE OR REPLACE TABLE IT_EVENT_LOGS (
 
 ---
 
-## Step 2: Storage Integration の作成
+## Step 2: Create the Storage Integration
 
-Snowflake から S3 バケットへのアクセスを許可する Storage Integration を作成します。
+Create a Storage Integration that authorizes Snowflake to access the S3 bucket.
 
 ```sql
 -- =============================================
--- Step 2: Storage Integration の作成
+-- Step 2: Create Storage Integration
 -- =============================================
 CREATE OR REPLACE STORAGE INTEGRATION s3_handson_integration
   TYPE = EXTERNAL_STAGE
@@ -56,22 +56,22 @@ CREATE OR REPLACE STORAGE INTEGRATION s3_handson_integration
   STORAGE_ALLOWED_LOCATIONS = ('s3://oist-handson/handson/');
 ```
 
-### IAM 信頼ポリシーの設定（講師が事前に実施）
+### Setting the IAM Trust Policy (Pre-configured by the Instructor)
 
 ```sql
--- Snowflake 側の情報を確認
+-- Check Snowflake-side information
 DESC INTEGRATION s3_handson_integration;
 ```
 
-出力される `STORAGE_AWS_IAM_USER_ARN` と `STORAGE_AWS_EXTERNAL_ID` を AWS IAM ロールの信頼ポリシーに設定します（講師が事前に設定済み）。
+Set the `STORAGE_AWS_IAM_USER_ARN` and `STORAGE_AWS_EXTERNAL_ID` from the output into the AWS IAM role's trust policy (pre-configured by the instructor).
 
 ---
 
-## Step 3: External Stage の作成
+## Step 3: Create the External Stage
 
 ```sql
 -- =============================================
--- Step 3: External Stage の作成
+-- Step 3: Create External Stage
 -- =============================================
 CREATE OR REPLACE STAGE SERVICENOW_HANDSON.ANALYTICS.S3_EVENT_STAGE
   STORAGE_INTEGRATION = s3_handson_integration
@@ -84,103 +84,103 @@ CREATE OR REPLACE STAGE SERVICENOW_HANDSON.ANALYTICS.S3_EVENT_STAGE
   );
 ```
 
-### ファイルの確認
+### Verify the Files
 
 ```sql
--- S3 上のファイルを確認
+-- Check files on S3
 LIST @SERVICENOW_HANDSON.ANALYTICS.S3_EVENT_STAGE;
 ```
 
 ---
 
-## Step 4: ウェアハウスサイズによるパフォーマンス比較
+## Step 4: Performance Comparison by Warehouse Size
 
-ウェアハウスのサイズを変更するだけで、データロードのパフォーマンスが向上することを体験します。
+Experience how simply changing the warehouse size improves data loading performance.
 
-### 4.1 XS（X-Small）ウェアハウスでロード
+### 4.1 Load with XS (X-Small) Warehouse
 
 ```sql
 -- =============================================
--- Step 4.1: XS ウェアハウスでロード
+-- Step 4.1: Load with XS warehouse
 -- =============================================
 ALTER WAREHOUSE COMPUTE_WH SET WAREHOUSE_SIZE = 'XSMALL';
 ALTER WAREHOUSE COMPUTE_WH SUSPEND;
 ALTER WAREHOUSE COMPUTE_WH RESUME;
 
--- ロード実行（所要時間を確認）
+-- Execute load (check the elapsed time)
 COPY INTO SERVICENOW_HANDSON.ANALYTICS.IT_EVENT_LOGS
   FROM @SERVICENOW_HANDSON.ANALYTICS.S3_EVENT_STAGE
   PATTERN = '.*it_event_logs_[0-9]+\\.csv\\.gz';
 ```
 
-> **確認**: Query History でロード時間を記録してください。参考値：約30秒
+> **Check**: Record the load time from Query History. Reference value: approx. 30 seconds
 
 ```sql
--- ロード結果の確認
+-- Verify load results
 SELECT COUNT(*) AS row_count FROM SERVICENOW_HANDSON.ANALYTICS.IT_EVENT_LOGS;
 SELECT * FROM SERVICENOW_HANDSON.ANALYTICS.IT_EVENT_LOGS LIMIT 5;
 ```
 
-### 4.2 テーブルをクリアして再ロード準備
+### 4.2 Clear the Table and Prepare for Reload
 
 ```sql
--- テーブルをクリア
+-- Clear the table
 TRUNCATE TABLE SERVICENOW_HANDSON.ANALYTICS.IT_EVENT_LOGS;
 
--- クリア確認
+-- Verify cleared
 SELECT * FROM SERVICENOW_HANDSON.ANALYTICS.IT_EVENT_LOGS;
 ```
 
-### 4.3 M（Medium）ウェアハウスでロード
+### 4.3 Load with M (Medium) Warehouse
 
 ```sql
 -- =============================================
--- Step 4.3: M ウェアハウスでロード
+-- Step 4.3: Load with M warehouse
 -- =============================================
 ALTER WAREHOUSE COMPUTE_WH SET WAREHOUSE_SIZE = 'MEDIUM';
 ALTER WAREHOUSE COMPUTE_WH SUSPEND;
 ALTER WAREHOUSE COMPUTE_WH RESUME;
 
--- ロード実行（所要時間を確認）
+-- Execute load (check the elapsed time)
 COPY INTO SERVICENOW_HANDSON.ANALYTICS.IT_EVENT_LOGS
   FROM @SERVICENOW_HANDSON.ANALYTICS.S3_EVENT_STAGE
   PATTERN = '.*it_event_logs_[0-9]+\\.csv\\.gz';
 ```
 
-> **確認**: Query History でロード時間を記録してください。参考値：約14秒
+> **Check**: Record the load time from Query History. Reference value: approx. 14 seconds
 
-### パフォーマンス比較結果（参考値）
+### Performance Comparison Results (Reference Values)
 
-| ウェアハウスサイズ | 実行時間 | 行数 |
+| Warehouse Size | Execution Time | Rows |
 |---|---|---|
-| **X-Small** | 約30秒 | 50,000,000 |
-| **Medium** | 約14秒 | 50,000,000 |
+| **X-Small** | Approx. 30 sec | 50,000,000 |
+| **Medium** | Approx. 14 sec | 50,000,000 |
 
-> **ポイント**: M は XS の約2倍高速です。Snowflake は10ファイルを並列にロードしますが、XS は1ノードで順次処理するのに対し、M は複数ノードで並列処理するためパフォーマンスが向上します。SQL やファイルの分割などの作業は不要で、ウェアハウスサイズを変えるだけです。
+> **Key Point**: M is approximately 2x faster than XS. Snowflake loads 10 files in parallel, but XS processes them sequentially on a single node, whereas M processes them in parallel across multiple nodes, resulting in improved performance. No SQL changes or file splitting is required — just change the warehouse size.
 
-### 4.4 ウェアハウスを元に戻す
+### 4.4 Revert the Warehouse Size
 
 ```sql
--- コスト節約のため XS に戻す
+-- Revert to XS to save costs
 ALTER WAREHOUSE COMPUTE_WH SET WAREHOUSE_SIZE = 'XSMALL';
 ```
 
 ---
 
-## Step 5: ロードデータの確認
+## Step 5: Verify the Loaded Data
 
 ```sql
 -- =============================================
--- Step 5: データ確認
+-- Step 5: Verify data
 -- =============================================
 
--- 件数確認
+-- Check row count
 SELECT COUNT(*) AS total_rows FROM SERVICENOW_HANDSON.ANALYTICS.IT_EVENT_LOGS;
 
--- サンプルデータ
+-- Sample data
 SELECT * FROM SERVICENOW_HANDSON.ANALYTICS.IT_EVENT_LOGS LIMIT 10;
 
--- カテゴリ別集計
+-- Aggregation by category
 SELECT
     category,
     COUNT(*) AS event_count,
@@ -194,11 +194,11 @@ ORDER BY event_count DESC;
 
 ---
 
-## Step 6: イベントログ × インシデント 突合分析用 Dynamic Table
+## Step 6: Dynamic Table for Event Log x Incident Cross-Referencing Analysis
 
 ```sql
 -- =============================================
--- Step 6: 突合分析用 Dynamic Table の作成
+-- Step 6: Create Dynamic Table for cross-referencing analysis
 -- =============================================
 CREATE OR REPLACE DYNAMIC TABLE SERVICENOW_HANDSON.ANALYTICS.DT_EVENT_INCIDENT_CORRELATION
   TARGET_LAG = '1 hour'
@@ -219,21 +219,21 @@ LEFT JOIN SERVICENOW_HANDSON.ANALYTICS.DT_INCIDENT_ENRICHED i
 GROUP BY 1, 2;
 ```
 
-> **解説**:
-> - イベントログとインシデントを `category`（カテゴリ）と `日付` で突合
-> - 「イベント多発日にインシデントも多いか？」「CRITICAL イベントとインシデントの相関は？」を分析可能
+> **Explanation**:
+> - Cross-references event logs and incidents by `category` and `date`
+> - Enables analysis of questions like "Are there more incidents on days with many events?" and "What is the correlation between CRITICAL events and incidents?"
 
 ---
 
-## まとめ
+## Summary
 
-このパートで実施したこと：
+What was accomplished in this part:
 
-1. **S3 外部データ連携**: Storage Integration + External Stage でセキュアにアクセス
-2. **COPY INTO でバルクロード**: 5,000万行のイベントログを10ファイル並列で一括ロード
-3. **ウェアハウスサイズの効果**: XS（約30秒）→ M（約14秒）で約2倍のパフォーマンス向上を実証
-4. **外部データとの突合**: イベントログ × ServiceNow インシデントの相関分析用 Dynamic Table を作成
+1. **S3 External Data Integration**: Secure access via Storage Integration + External Stage
+2. **Bulk Loading with COPY INTO**: Loaded 50 million rows of event logs in parallel across 10 files
+3. **Effect of Warehouse Sizing**: Demonstrated approx. 2x performance improvement from XS (approx. 30 sec) to M (approx. 14 sec)
+4. **Cross-Referencing with External Data**: Created a Dynamic Table for correlation analysis between event logs and ServiceNow incidents
 
-> **ポイント**: Snowflake は SQL を変えずにウェアハウスサイズを変更するだけでパフォーマンスが向上します。データ量の増加に対してはインフラのチューニングではなく、ウェアハウスの「T シャツサイズ」を変えるだけで対応できます。
+> **Key Point**: In Snowflake, performance improves simply by changing the warehouse size without modifying SQL. To handle increasing data volumes, you only need to change the warehouse "T-shirt size" instead of tuning infrastructure.
 
-**次のパート**: [Part 2: Dynamic Tables でデータ加工](part2_dynamic_tables.md) に進みます。
+**Next Part**: Proceed to [Part 2: Data Transformation with Dynamic Tables](part2_dynamic_tables.md).

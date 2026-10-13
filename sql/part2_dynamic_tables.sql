@@ -1,27 +1,28 @@
 -- =============================================================================
--- Part 2: Dynamic Tables でデータ加工パイプライン構築
+-- Part 2: Building a Data Processing Pipeline with Dynamic Tables
 -- =============================================================================
--- ServiceNow Connector で同期された生データ（VARIANT 形式）を
--- Dynamic Tables で分析しやすいフラットなテーブルに変換します。
--- Dynamic Tables は宣言的パイプライン: SQL を定義するだけで自動リフレッシュされます。
+-- Transform raw data (VARIANT format) synced by the ServiceNow Connector
+-- into flat, analysis-friendly tables using Dynamic Tables.
+-- Dynamic Tables are declarative pipelines: just define the SQL and they
+-- refresh automatically.
 -- =============================================================================
 
 USE ROLE ACCOUNTADMIN;
 
 -- -----------------------------------------------------------------------------
--- Step 1: 分析用データベース・スキーマの作成
--- 同期データ（SERVICENOW_DEST_DB）と分析テーブルを分離して管理
+-- Step 1: Create the analytics database and schema
+-- Separate synced data (SERVICENOW_DEST_DB) from analytics tables
 -- -----------------------------------------------------------------------------
 CREATE DATABASE IF NOT EXISTS SERVICENOW_HANDSON;
 CREATE SCHEMA IF NOT EXISTS SERVICENOW_HANDSON.ANALYTICS;
 USE SCHEMA SERVICENOW_HANDSON.ANALYTICS;
 
 -- -----------------------------------------------------------------------------
--- Step 2: DT_INCIDENT_ENRICHED（インシデント詳細テーブル）
--- インシデント × ユーザー × グループを結合し、MTTR・SLA遵守を計算
--- RAW:field::TYPE 構文で VARIANT カラムをフラット化
--- 参照フィールド（assigned_to 等）は {value: "sys_id"} 形式
--- TARGET_LAG='1 hour': ソース更新後、最大1時間以内にリフレッシュ
+-- Step 2: DT_INCIDENT_ENRICHED (Incident detail table)
+-- Join incident x user x group, and compute MTTR and SLA compliance.
+-- Flatten the VARIANT column using RAW:field::TYPE syntax.
+-- Reference fields (assigned_to, etc.) use {value: "sys_id"} format.
+-- TARGET_LAG='1 hour': Refresh within 1 hour after source update.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE DYNAMIC TABLE DT_INCIDENT_ENRICHED
   TARGET_LAG = '1 hour'
@@ -37,7 +38,7 @@ SELECT
     i.RAW:urgency::STRING                              AS urgency,
     i.RAW:impact::STRING                               AS impact,
     i.RAW:state::STRING                                AS state,
-    -- 優先度コード → 人が読めるラベルに変換
+    -- Convert priority code to human-readable label
     CASE i.RAW:priority::STRING
         WHEN '1' THEN '1 - Critical'
         WHEN '2' THEN '2 - High'
@@ -46,7 +47,7 @@ SELECT
         WHEN '5' THEN '5 - Planning'
         ELSE i.RAW:priority::STRING
     END                                                AS priority_label,
-    -- ステータスコード → ラベルに変換
+    -- Convert state code to label
     CASE i.RAW:state::STRING
         WHEN '1' THEN 'New'
         WHEN '2' THEN 'In Progress'
@@ -56,18 +57,18 @@ SELECT
         WHEN '8' THEN 'Canceled'
         ELSE i.RAW:state::STRING
     END                                                AS state_label,
-    -- グループ情報（sys_user_group と結合）
+    -- Group info (joined with sys_user_group)
     i.RAW:assignment_group:value::STRING               AS assignment_group_id,
     g.RAW:name::STRING                                 AS assignment_group_name,
-    -- 担当者情報（sys_user と結合）
+    -- Assignee info (joined with sys_user)
     i.RAW:assigned_to:value::STRING                    AS assigned_to_id,
     u.RAW:name::STRING                                 AS assigned_to_name,
     u.RAW:email::STRING                                AS assigned_to_email,
-    -- 日時（空文字列を安全にタイムスタンプ変換）
+    -- Timestamps (safely convert empty strings to timestamps)
     TRY_TO_TIMESTAMP_NTZ(i.RAW:opened_at::STRING)     AS opened_at,
     TRY_TO_TIMESTAMP_NTZ(i.RAW:resolved_at::STRING)   AS resolved_at,
     TRY_TO_TIMESTAMP_NTZ(i.RAW:closed_at::STRING)     AS closed_at,
-    -- MTTR（Mean Time To Resolve）: オープンから解決までの時間（時間単位）
+    -- MTTR (Mean Time To Resolve): time from open to resolution (in hours)
     CASE
         WHEN NULLIF(i.RAW:resolved_at::STRING, '') IS NOT NULL
          AND NULLIF(i.RAW:opened_at::STRING, '') IS NOT NULL
@@ -76,7 +77,7 @@ SELECT
                TRY_TO_TIMESTAMP_NTZ(i.RAW:resolved_at::STRING)) / 60.0, 2)
         ELSE NULL
     END                                                AS mttr_hours,
-    -- SLA遵守判定（優先度ごとの目標時間: P1=4h, P2=8h, P3=24h, P4=72h）
+    -- SLA compliance check (target hours by priority: P1=4h, P2=8h, P3=24h, P4=72h)
     CASE
         WHEN NULLIF(i.RAW:resolved_at::STRING, '') IS NULL THEN NULL
         WHEN i.RAW:priority::STRING = '1' AND DATEDIFF('hour',
@@ -102,9 +103,9 @@ LEFT JOIN SERVICENOW_DEST_DB.DEST_SCHEMA.SYS_USER_GROUP g
 WHERE i.IS_DELETED = FALSE;
 
 -- -----------------------------------------------------------------------------
--- Step 3: DT_INCIDENT_DAILY_STATS（日別インシデント統計）
--- DT_INCIDENT_ENRICHED を集計して日次のKPIを算出
--- パイプラインとして DT_INCIDENT_ENRICHED に連鎖（自動リフレッシュ）
+-- Step 3: DT_INCIDENT_DAILY_STATS (Daily incident statistics)
+-- Aggregate DT_INCIDENT_ENRICHED to compute daily KPIs.
+-- Chains to DT_INCIDENT_ENRICHED as a pipeline (auto-refresh).
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE DYNAMIC TABLE DT_INCIDENT_DAILY_STATS
   TARGET_LAG = '1 hour'
@@ -130,11 +131,12 @@ WHERE opened_at IS NOT NULL
 GROUP BY DATE_TRUNC('day', opened_at)::DATE, DAYNAME(opened_at);
 
 -- -----------------------------------------------------------------------------
--- Step 4: DT_SLA_ANALYSIS（SLA 達成状況分析）
--- task_sla テーブルとインシデントを結合し、SLA達成率・違反状況を可視化
+-- Step 4: DT_SLA_ANALYSIS (SLA achievement analysis)
+-- Join the task_sla table with incidents to visualize SLA achievement rates
+-- and violations.
 -- stage: achieved/breached/in_progress/cancelled
--- has_breached: SLA違反フラグ
--- percentage: SLA消費率（100%超 = 違反）
+-- has_breached: SLA violation flag
+-- percentage: SLA consumption rate (over 100% = violation)
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE DYNAMIC TABLE DT_SLA_ANALYSIS
   TARGET_LAG = '1 hour'
@@ -166,11 +168,11 @@ LEFT JOIN SERVICENOW_DEST_DB.DEST_SCHEMA.INCIDENT i
 WHERE s.IS_DELETED = FALSE;
 
 -- -----------------------------------------------------------------------------
--- Step 5: DT_TEAM_PERFORMANCE（チーム別パフォーマンス）
--- Assignment Group 単位でインシデント対応実績を集計
--- avg_mttr_hours: チーム別の平均解決時間
--- sla_compliance_pct: チーム別のSLA遵守率
--- high_priority_count: 高優先度（P1,P2）インシデント件数
+-- Step 5: DT_TEAM_PERFORMANCE (Team-level performance)
+-- Aggregate incident response metrics by assignment group.
+-- avg_mttr_hours: average resolution time per team
+-- sla_compliance_pct: SLA compliance rate per team
+-- high_priority_count: number of high-priority (P1, P2) incidents
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE DYNAMIC TABLE DT_TEAM_PERFORMANCE
   TARGET_LAG = '1 hour'
@@ -197,8 +199,8 @@ WHERE assignment_group_name IS NOT NULL
 GROUP BY assignment_group_name;
 
 -- -----------------------------------------------------------------------------
--- Step 6: 手動リフレッシュ（ハンズオン中はデータをすぐ確認するために実行）
--- 通常は TARGET_LAG に基づいて自動リフレッシュされる
+-- Step 6: Manual refresh (execute during the hands-on to view data immediately)
+-- Normally, auto-refresh occurs based on TARGET_LAG
 -- -----------------------------------------------------------------------------
 ALTER DYNAMIC TABLE DT_INCIDENT_ENRICHED REFRESH;
 ALTER DYNAMIC TABLE DT_INCIDENT_DAILY_STATS REFRESH;
@@ -206,30 +208,30 @@ ALTER DYNAMIC TABLE DT_SLA_ANALYSIS REFRESH;
 ALTER DYNAMIC TABLE DT_TEAM_PERFORMANCE REFRESH;
 
 -- -----------------------------------------------------------------------------
--- Step 7: データ確認
+-- Step 7: Verify data
 -- -----------------------------------------------------------------------------
 
--- Dynamic Tables の一覧と状態確認
+-- List and check status of Dynamic Tables
 SHOW DYNAMIC TABLES IN SCHEMA SERVICENOW_HANDSON.ANALYTICS;
 
--- インシデント詳細
+-- Incident details
 SELECT incident_number, short_description, priority_label, state_label,
        assignment_group_name, assigned_to_name, mttr_hours, sla_met
 FROM DT_INCIDENT_ENRICHED
 LIMIT 10;
 
--- 日別統計
+-- Daily statistics
 SELECT report_date, total_incidents, resolved_incidents, avg_mttr_hours, sla_compliance_pct
 FROM DT_INCIDENT_DAILY_STATS
 ORDER BY report_date DESC
 LIMIT 10;
 
--- SLA 分析
+-- SLA analysis
 SELECT incident_number, incident_description, stage, has_breached, percentage, duration_hours
 FROM DT_SLA_ANALYSIS
 LIMIT 10;
 
--- チーム別パフォーマンス
+-- Team-level performance
 SELECT assignment_group, total_incidents, avg_mttr_hours, sla_compliance_pct
 FROM DT_TEAM_PERFORMANCE
 ORDER BY total_incidents DESC;

@@ -1,24 +1,24 @@
-# Part 5: AI エージェントアプリ（Cortex Agent + Streamlit）構築
+# Part 5: Building an AI Agent App (Cortex Agent + Streamlit)
 
-## 概要
+## Overview
 
-このパートでは、Part 4 で作成した Semantic View（データ分析機能）とインシデント履歴の全文検索機能を統合した AI エージェントを構築し、Streamlit in Snowflake でダッシュボード + チャット UI を提供します。
+In this part, we build an AI agent that integrates the Semantic View (data analysis capability) created in Part 4 with full-text search of incident history, and provide a dashboard + chat UI via Streamlit in Snowflake.
 
-## 前提条件
+## Prerequisites
 
-- Part 4 が完了し、Semantic View が作成済み
+- Part 4 is complete and the Semantic View has been created
 
-## アーキテクチャ
+## Architecture
 
 ```
 ┌───────────────────────────────────────────────────┐
-│  Streamlit in Snowflake（IT_OPS_AGENT_APP）       │
+│  Streamlit in Snowflake (IT_OPS_AGENT_APP)        │
 │  ┌──────────────────┬──────────────────────────┐  │
-│  │ 📊 ダッシュボード │ 🤖 AI チャット           │  │
-│  │ KPI カード       │ 自然言語で質問            │  │
-│  │ 月次推移         │ エージェントが回答        │  │
-│  │ カテゴリ別分析   │ 処理ステップ表示          │  │
-│  │ チーム別一覧     │                           │  │
+│  │ Dashboard        │ AI Chat                  │  │
+│  │ KPI Cards        │ Ask questions in          │  │
+│  │ Monthly Trends   │ natural language          │  │
+│  │ Category Analysis│ Agent responds            │  │
+│  │ Team List        │ Processing steps shown    │  │
 │  └──────────────────┴────────────┬─────────────┘  │
 │                                  │                 │
 │                                  ▼                 │
@@ -35,15 +35,15 @@
 
 ---
 
-## Step 1: Cortex Search Service の作成
+## Step 1: Creating the Cortex Search Service
 
-インシデント履歴を全文検索できるようにするため、Cortex Search Service を作成します。
+We create a Cortex Search Service to enable full-text search of incident history.
 
-### 1.1 検索用ビューの作成
+### 1.1 Creating the Search View
 
 ```sql
 -- =============================================
--- Step 1.1: 検索用ビューの作成
+-- Step 1.1: Creating the search view
 -- =============================================
 USE ROLE ACCOUNTADMIN;
 USE SCHEMA SERVICENOW_HANDSON.ANALYTICS;
@@ -79,18 +79,18 @@ WHERE i.IS_DELETED = FALSE
   AND i.RAW:short_description::STRING IS NOT NULL;
 ```
 
-### 1.2 Cortex Search Service の作成
+### 1.2 Creating the Cortex Search Service
 
 ```sql
 -- =============================================
--- Step 1.2: Cortex Search Service の作成
+-- Step 1.2: Creating the Cortex Search Service
 -- =============================================
 CREATE OR REPLACE CORTEX SEARCH SERVICE SERVICENOW_HANDSON.ANALYTICS.INCIDENT_SEARCH_SERVICE
   ON search_text
   ATTRIBUTES incident_number, category, priority_label
   WAREHOUSE = COMPUTE_WH
   TARGET_LAG = '1 hour'
-  COMMENT = 'インシデント履歴の全文検索サービス'
+  COMMENT = 'Full-text search service for incident history'
 AS (
   SELECT
     search_text,
@@ -104,47 +104,47 @@ AS (
 );
 ```
 
-> **解説**:
-> - `ON search_text`: 検索対象のテキストカラムを指定（概要説明 + 詳細説明を結合）
-> - `ATTRIBUTES`: フィルタリングや結果表示に使うメタデータカラム
-> - `TARGET_LAG`: ソースデータ更新後のリフレッシュ遅延（1 時間）
+> **Notes**:
+> - `ON search_text`: Specifies the text column to search (summary + detailed description concatenated)
+> - `ATTRIBUTES`: Metadata columns used for filtering and result display
+> - `TARGET_LAG`: Refresh delay after source data updates (1 hour)
 
 ---
 
-## Step 2: Cortex Agent の作成
+## Step 2: Creating the Cortex Agent
 
-Semantic View（データ分析）と Cortex Search Service（インシデント検索）を統合した AI エージェントを作成します。
+We create an AI agent that integrates the Semantic View (data analysis) and Cortex Search Service (incident search).
 
 ```sql
 -- =============================================
--- Step 2: Cortex Agent の作成
+-- Step 2: Creating the Cortex Agent
 -- =============================================
 CREATE OR REPLACE AGENT SERVICENOW_HANDSON.ANALYTICS.IT_OPS_AGENT
-  COMMENT = 'IT運用支援AIエージェント - データ分析とインシデント検索を統合'
+  COMMENT = 'IT operations support AI agent - integrates data analysis and incident search'
   FROM SPECIFICATION
   $$
   models:
     orchestration: auto
 
   instructions:
-    response: "あなたはIT運用支援AIアシスタントです。日本語で回答してください。データ分析の結果には具体的な数値を含めてください。インシデント検索の結果にはインシデント番号を含めてください。"
-    orchestration: "定量的な分析（MTTR、SLA遵守率、件数、イベントログ分析など）にはAnalystツールを使用してください。過去のインシデントの詳細検索や類似インシデントの検索にはSearchツールを使用してください。イベントログ（IT_EVENT_LOGS）には5000万件のITインフライベントが含まれています。イベントとインシデントの相関分析にはDT_EVENT_INCIDENT_CORRELATIONを活用してください。"
+    response: "You are an IT operations support AI assistant. Please respond in Japanese. Include specific numbers in data analysis results. Include incident numbers in incident search results."
+    orchestration: "Use the Analyst tool for quantitative analysis (MTTR, SLA compliance rate, counts, event log analysis, etc.). Use the Search tool for detailed search of past incidents or similar incident search. IT_EVENT_LOGS contains 50 million IT infrastructure events. Use DT_EVENT_INCIDENT_CORRELATION for event-incident correlation analysis."
     sample_questions:
-      - question: "カテゴリ別のMTTRを教えて"
-      - question: "SLA違反の件数は？"
-      - question: "ネットワーク関連のインシデントを検索して"
-      - question: "イベントログの総件数は？"
-      - question: "カテゴリ別のイベント数とインシデント数の比較は？"
+      - question: "Show MTTR by category"
+      - question: "How many SLA violations are there?"
+      - question: "Search for network-related incidents"
+      - question: "What is the total event log count?"
+      - question: "What is the comparison of event counts and incident counts by category?"
 
   tools:
     - tool_spec:
         type: "cortex_analyst_text_to_sql"
         name: "Analyst"
-        description: "ServiceNowインシデントデータおよびITインフラ イベントログの定量分析（MTTR、SLA遵守率、チーム別パフォーマンス、イベントログ集計、イベント×インシデント相関分析等）"
+        description: "Quantitative analysis of ServiceNow incident data and IT infrastructure event logs (MTTR, SLA compliance rate, team performance, event log aggregation, event x incident correlation analysis, etc.)"
     - tool_spec:
         type: "cortex_search"
         name: "IncidentSearch"
-        description: "過去のインシデント履歴を全文検索（障害内容、対応策、類似インシデント等）"
+        description: "Full-text search of past incident history (fault details, remediation actions, similar incidents, etc.)"
 
   tool_resources:
     Analyst:
@@ -158,71 +158,71 @@ CREATE OR REPLACE AGENT SERVICENOW_HANDSON.ANALYTICS.IT_OPS_AGENT
   $$;
 ```
 
-> **解説**:
-> - `models.orchestration: auto`: Snowflake が最適な LLM を自動選択
-> - `instructions.response`: エージェントの応答スタイルを定義（日本語対応）
-> - `instructions.orchestration`: ツールの使い分けルールを定義
-> - `execution_environment`: Analyst ツールが SQL を実行するウェアハウスを指定（**必須**）
-> - `tools`: エージェントが使える 2 つのツールを指定
->   - `cortex_analyst_text_to_sql`: Semantic View 経由でデータ分析
->   - `cortex_search`: インシデント履歴の全文検索
+> **Notes**:
+> - `models.orchestration: auto`: Snowflake automatically selects the optimal LLM
+> - `instructions.response`: Defines the agent's response style (Japanese language support)
+> - `instructions.orchestration`: Defines tool selection rules
+> - `execution_environment`: Specifies the warehouse where the Analyst tool executes SQL (**required**)
+> - `tools`: Specifies the 2 tools available to the agent
+>   - `cortex_analyst_text_to_sql`: Data analysis via Semantic View
+>   - `cortex_search`: Full-text search of incident history
 
 ---
 
-## Step 3: Agent のテスト
+## Step 3: Testing the Agent
 
-### 3.1 Snowsight でのテスト
+### 3.1 Testing in Snowsight
 
-1. Snowsight にログイン
-2. 左メニューから **AI & ML > Agents** を選択
-3. `IT_OPS_AGENT` を選択
-4. プレイグラウンドで以下のシナリオをテスト
+1. Log in to Snowsight
+2. Select **AI & ML > Agents** from the left menu
+3. Select `IT_OPS_AGENT`
+4. Test the following scenarios in the playground
 
-### 3.2 SQL でのテスト
+### 3.2 Testing with SQL
 
 ```sql
 -- =============================================
--- Step 3: Agent のテスト
+-- Step 3: Testing the Agent
 -- =============================================
 SELECT SNOWFLAKE.CORTEX.DATA_AGENT_RUN(
   'SERVICENOW_HANDSON.ANALYTICS.IT_OPS_AGENT',
-  '{"messages": [{"role": "user", "content": [{"type": "text", "text": "カテゴリ別のMTTRを教えて"}]}]}',
+  '{"messages": [{"role": "user", "content": [{"type": "text", "text": "Show MTTR by category"}]}]}',
   TRUE
 );
 ```
 
-### テストシナリオ
+### Test Scenarios
 
-| シナリオ | 入力 | 期待動作 |
+| Scenario | Input | Expected Behavior |
 |---|---|---|
-| データ分析 | 「カテゴリ別の平均MTTRを教えてください」 | Analyst ツールで SQL 生成・実行し数値で回答 |
-| インシデント検索 | 「VPN に接続できないインシデントは？」 | Search ツールでインシデント番号付きで回答 |
-| 複合質問 | 「ネットワーク関連の傾向と過去の対応は？」 | Analyst + Search の両方を使って回答 |
+| Data Analysis | "Show the average MTTR by category" | Analyst tool generates and executes SQL, responds with numbers |
+| Incident Search | "Are there incidents about VPN connection failures?" | Search tool responds with incident numbers |
+| Compound Question | "What are the network-related trends and past responses?" | Responds using both Analyst + Search |
 
 ---
 
-## Step 4: Streamlit in Snowflake でアプリ作成
+## Step 4: Creating the App with Streamlit in Snowflake
 
-AI エージェントをダッシュボード付きの Web アプリとして公開します。
+We publish the AI agent as a web app with a dashboard.
 
-### 4.1 ステージの作成
+### 4.1 Creating the Stage
 
 ```sql
 -- =============================================
--- Step 4.1: Streamlit 用ステージの作成
+-- Step 4.1: Creating the Streamlit stage
 -- =============================================
 CREATE STAGE IF NOT EXISTS SERVICENOW_HANDSON.ANALYTICS.STREAMLIT_STAGE
   DIRECTORY = (ENABLE = TRUE)
-  COMMENT = 'Streamlit アプリ用ステージ';
+  COMMENT = 'Stage for Streamlit app';
 ```
 
-### 4.2 Python ファイルのアップロード
+### 4.2 Uploading the Python File
 
-Snowsight の SQL ワークシートで以下を実行します（ファイルパスは適宜変更してください）：
+Execute the following in a Snowsight SQL worksheet (adjust the file path as needed):
 
 ```sql
 -- =============================================
--- Step 4.2: Python ファイルのアップロード
+-- Step 4.2: Uploading the Python file
 -- =============================================
 PUT 'file:///path/to/streamlit_app.py'
   @SERVICENOW_HANDSON.ANALYTICS.STREAMLIT_STAGE/
@@ -230,108 +230,108 @@ PUT 'file:///path/to/streamlit_app.py'
   OVERWRITE = TRUE;
 ```
 
-> **注意**: `PUT` コマンドは SQL ワークシートから実行できます。ファイルはローカル PC からアップロードされます。
+> **Note**: The `PUT` command can be executed from a SQL worksheet. The file is uploaded from your local PC.
 
-### 4.3 Streamlit アプリの作成
+### 4.3 Creating the Streamlit App
 
 ```sql
 -- =============================================
--- Step 4.3: Streamlit アプリの作成
+-- Step 4.3: Creating the Streamlit app
 -- =============================================
 CREATE OR REPLACE STREAMLIT SERVICENOW_HANDSON.ANALYTICS.IT_OPS_AGENT_APP
   ROOT_LOCATION = '@SERVICENOW_HANDSON.ANALYTICS.STREAMLIT_STAGE'
   MAIN_FILE = 'streamlit_app.py'
   QUERY_WAREHOUSE = 'COMPUTE_WH'
-  TITLE = 'IT運用支援AIエージェント'
-  COMMENT = 'ServiceNow IT運用データのダッシュボード＋Cortex Agentチャット';
+  TITLE = 'IT Operations Support AI Agent'
+  COMMENT = 'ServiceNow IT operations data dashboard + Cortex Agent chat';
 ```
 
-### 4.4 アプリの確認
+### 4.4 Verifying the App
 
-1. Snowsight 左メニューから **Streamlit** を選択
-2. `IT_OPS_AGENT_APP` をクリック
-3. 2 つのタブを確認：
-   - **📊 ダッシュボード**: KPI カード、月次推移、カテゴリ別・優先度別分析、チーム別パフォーマンス
-   - **🤖 AI チャット**: Cortex Agent との対話（サンプル質問ボタン付き）
+1. Select **Streamlit** from the Snowsight left menu
+2. Click `IT_OPS_AGENT_APP`
+3. Verify the 2 tabs:
+   - **Dashboard**: KPI cards, monthly trends, category/priority analysis, team performance
+   - **AI Chat**: Conversation with Cortex Agent (with sample question buttons)
 
-> **ポイント**: Streamlit in Snowflake は SQL だけでデプロイできるため、ローカル環境やCLI は不要です。ハンズオン参加者はブラウザだけで完結します。
-
----
-
-## Step 5: （参考）Snowflake CoWork への接続
-
-エージェントを Snowflake CoWork（Snowflake Intelligence）に接続すると、Streamlit アプリとは別に、組織内のユーザーがチャット形式で利用できます。
-
-1. Snowsight 左メニューから **AI & ML > Agents** を選択
-2. `IT_OPS_AGENT` を選択
-3. **Connect to CoWork** ボタンをクリック
-4. 表示名やアイコンを設定して接続
+> **Tip**: Streamlit in Snowflake can be deployed with SQL alone, so no local environment or CLI is needed. Workshop participants can complete everything in the browser.
 
 ---
 
-## Step 6: （参考）クリーンアップ
+## Step 5: (Reference) Connecting to Snowflake CoWork
 
-ハンズオン終了後にリソースを削除する場合：
+By connecting the agent to Snowflake CoWork (Snowflake Intelligence), users in the organization can use it in a chat format, separate from the Streamlit app.
+
+1. Select **AI & ML > Agents** from the Snowsight left menu
+2. Select `IT_OPS_AGENT`
+3. Click the **Connect to CoWork** button
+4. Set the display name and icon, then connect
+
+---
+
+## Step 6: (Reference) Cleanup
+
+To delete resources after the workshop:
 
 ```sql
 -- =============================================
--- Step 6: クリーンアップ（必要な場合のみ）
+-- Step 6: Cleanup (only if needed)
 -- =============================================
 USE ROLE ACCOUNTADMIN;
 
--- Streamlit アプリの削除
+-- Delete the Streamlit app
 DROP STREAMLIT IF EXISTS SERVICENOW_HANDSON.ANALYTICS.IT_OPS_AGENT_APP;
 DROP STAGE IF EXISTS SERVICENOW_HANDSON.ANALYTICS.STREAMLIT_STAGE;
 
--- Cortex Agent の削除
+-- Delete the Cortex Agent
 DROP AGENT IF EXISTS SERVICENOW_HANDSON.ANALYTICS.IT_OPS_AGENT;
 
--- Cortex Search Service の削除
+-- Delete the Cortex Search Service
 DROP CORTEX SEARCH SERVICE IF EXISTS SERVICENOW_HANDSON.ANALYTICS.INCIDENT_SEARCH_SERVICE;
 
--- 検索用ビューの削除
+-- Delete the search view
 DROP VIEW IF EXISTS SERVICENOW_HANDSON.ANALYTICS.V_INCIDENT_SEARCH;
 
--- Semantic View の削除
+-- Delete the Semantic View
 DROP SEMANTIC VIEW IF EXISTS SERVICENOW_HANDSON.ANALYTICS.SERVICENOW_SEMANTIC_VIEW;
 
--- Dynamic Tables の削除
+-- Delete the Dynamic Tables
 DROP DYNAMIC TABLE IF EXISTS SERVICENOW_HANDSON.ANALYTICS.DT_INCIDENT_ENRICHED;
 DROP DYNAMIC TABLE IF EXISTS SERVICENOW_HANDSON.ANALYTICS.DT_INCIDENT_DAILY_STATS;
 DROP DYNAMIC TABLE IF EXISTS SERVICENOW_HANDSON.ANALYTICS.DT_SLA_ANALYSIS;
 DROP DYNAMIC TABLE IF EXISTS SERVICENOW_HANDSON.ANALYTICS.DT_TEAM_PERFORMANCE;
 
--- ハンズオン用データベースの削除
+-- Delete the workshop database
 DROP DATABASE IF EXISTS SERVICENOW_HANDSON;
 
--- Connector の一時停止
+-- Pause the Connector
 USE APPLICATION SNOWFLAKE_CONNECTOR_FOR_SERVICENOW;
 CALL PAUSE_CONNECTOR();
 ```
 
 ---
 
-## まとめ
+## Summary
 
-このパートで実施したこと：
+What was accomplished in this part:
 
-1. **Cortex Search Service** を作成（インシデント履歴の全文検索機能）
-2. **Cortex Agent** を作成（Analyst + Search を統合した AI エージェント）
-3. **テスト** を実施（データ分析、インシデント検索、複合質問）
-4. **Streamlit in Snowflake** でダッシュボード + AI チャットアプリを構築
+1. Created a **Cortex Search Service** (full-text search for incident history)
+2. Created a **Cortex Agent** (AI agent integrating Analyst + Search)
+3. Performed **testing** (data analysis, incident search, compound questions)
+4. Built a dashboard + AI chat app with **Streamlit in Snowflake**
 
 ---
 
-## ハンズオン全体の振り返り
+## Workshop Overall Review
 
-5 つのパートを通じて、以下の Snowflake 機能をエンドツーエンドで体験しました：
+Through the 5 parts, we experienced the following Snowflake features end-to-end:
 
-| パート | 機能 | 成果物 |
+| Part | Feature | Deliverable |
 |---|---|---|
-| Part 1 | Snowflake Connector for ServiceNow（OAuth2） | ServiceNow データの安全な自動同期 |
-| Part 2 | Dynamic Tables | 宣言的データ変換パイプライン |
-| Part 3 | Snowflake Notebooks | インタラクティブな分析・可視化 |
-| Part 4 | Semantic View + Cortex Analyst | 自然言語データ分析 |
-| Part 5 | Cortex Agent + Streamlit in Snowflake | AI エージェントアプリ（ダッシュボード + チャット） |
+| Part 1 | Snowflake Connector for ServiceNow (OAuth2) | Secure automatic sync of ServiceNow data |
+| Part 2 | Dynamic Tables | Declarative data transformation pipeline |
+| Part 3 | Snowflake Notebooks | Interactive analysis and visualization |
+| Part 4 | Semantic View + Cortex Analyst | Natural language data analysis |
+| Part 5 | Cortex Agent + Streamlit in Snowflake | AI agent app (dashboard + chat) |
 
-**ポイント**: ServiceNow からの安全なデータ取り込み（OAuth2 認証）から AI エージェントアプリまで、すべて Snowflake 上で完結しています。ローカル環境やサードパーティツールは一切不要です。
+**Key Takeaway**: From secure data ingestion from ServiceNow (OAuth2 authentication) to AI agent app, everything is completed entirely on Snowflake. No local environment or third-party tools are required.

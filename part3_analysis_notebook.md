@@ -1,12 +1,12 @@
-# Part 3: Snowflake Notebooks で分析・可視化
+# Part 3: Analysis and Visualization with Snowflake Notebooks
 
-## 概要
+## Overview
 
-このパートでは、Snowflake Notebooks を使って Part 2 で作成した Dynamic Tables のデータをインタラクティブに分析・可視化します。SQL でデータを取得し、Python（Plotly）でチャートを作成します。
+In this part, we use Snowflake Notebooks to interactively analyze and visualize the data from the Dynamic Tables created in Part 2. We retrieve data with SQL and create charts with Python (Plotly).
 
-## 前提条件
+## Prerequisites
 
-- Part 2 が完了し、以下の Dynamic Tables にデータが存在：
+- Part 2 is complete and data exists in the following Dynamic Tables:
   - `SERVICENOW_HANDSON.ANALYTICS.DT_INCIDENT_ENRICHED`
   - `SERVICENOW_HANDSON.ANALYTICS.DT_INCIDENT_DAILY_STATS`
   - `SERVICENOW_HANDSON.ANALYTICS.DT_SLA_ANALYSIS`
@@ -14,25 +14,25 @@
 
 ---
 
-## Step 1: Notebook の作成
+## Step 1: Creating the Notebook
 
-Workspace Notebook（.ipynb）を使用します。
+We use a Workspace Notebook (.ipynb).
 
-1. Snowsight で **Projects → Workspaces** に移動
-2. 自分の Workspace を開く
-3. **+ Add new → Upload file** をクリック
-4. 提供された `ServiceNow_Analysis.ipynb` ファイルをアップロード
-5. アップロードしたファイルをクリックして開く
-6. 接続ダイアログで **Database**: `SERVICENOW_HANDSON`、**Schema**: `ANALYTICS`、**Warehouse**: `COMPUTE_WH` を選択
+1. In Snowsight, navigate to **Projects → Workspaces**
+2. Open your Workspace
+3. Click **+ Add new → Upload file**
+4. Upload the provided `ServiceNow_Analysis.ipynb` file
+5. Click the uploaded file to open it
+6. In the connection dialog, select **Database**: `SERVICENOW_HANDSON`, **Schema**: `ANALYTICS`, **Warehouse**: `COMPUTE_WH`
 
-> **注意**: `cellN.to_pandas()` パターン（Legacy Notebook）は Workspace Notebook では使えません。Python セル内で `session.sql("SELECT ...").to_pandas()` を使ってデータを取得します。
+> **Note**: The `cellN.to_pandas()` pattern (Legacy Notebook) does not work in Workspace Notebooks. Use `session.sql("SELECT ...").to_pandas()` in Python cells to retrieve data.
 
 ---
 
-## Step 2: 環境セットアップ（Python セル）
+## Step 2: Environment Setup (Python Cell)
 
 ```python
-# セル 1: ライブラリのインポートとセッション取得
+# Cell 1: Import libraries and get session
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
@@ -42,14 +42,14 @@ from snowflake.snowpark.context import get_active_session
 session = get_active_session()
 ```
 
-> **ポイント**: `get_active_session()` で Snowpark セッションを取得します。以降のPythonセルではすべて `session.sql()` でデータを取得します。
+> **Tip**: Use `get_active_session()` to obtain a Snowpark session. In all subsequent Python cells, use `session.sql()` to retrieve data.
 
 ---
 
-## Step 3: インシデント月次発生トレンド
+## Step 3: Monthly Incident Trend
 
 ```python
-# セル 2: 月次インシデントトレンドの可視化
+# Cell 2: Visualize monthly incident trend
 df_monthly = session.sql("""
 SELECT
     DATE_TRUNC('month', opened_at)::DATE AS month,
@@ -66,34 +66,34 @@ fig = make_subplots(specs=[[{"secondary_y": True}]])
 
 fig.add_trace(
     go.Bar(x=df_monthly['MONTH'], y=df_monthly['INCIDENT_COUNT'],
-           name='総インシデント数', marker_color='#29B5E8'),
+           name='Total Incidents', marker_color='#29B5E8'),
     secondary_y=False,
 )
 
 fig.add_trace(
     go.Scatter(x=df_monthly['MONTH'], y=df_monthly['AVG_MTTR_HOURS'],
-               name='平均MTTR（時間）', line=dict(color='#FF6F61', width=3)),
+               name='Avg MTTR (hours)', line=dict(color='#FF6F61', width=3)),
     secondary_y=True,
 )
 
 fig.update_layout(
-    title='月次インシデント発生トレンドと平均解決時間',
-    xaxis_title='月',
+    title='Monthly Incident Trend and Average Resolution Time',
+    xaxis_title='Month',
     height=500,
     template='plotly_white'
 )
-fig.update_yaxes(title_text='インシデント数', secondary_y=False)
-fig.update_yaxes(title_text='平均MTTR（時間）', secondary_y=True)
+fig.update_yaxes(title_text='Incident Count', secondary_y=False)
+fig.update_yaxes(title_text='Avg MTTR (hours)', secondary_y=True)
 
 fig.show()
 ```
 
 ---
 
-## Step 4: カテゴリ別 MTTR 比較
+## Step 4: MTTR Comparison by Category
 
 ```python
-# セル 3: カテゴリ別MTTR比較（横棒グラフ）
+# Cell 3: MTTR comparison by category (horizontal bar chart)
 df_category = session.sql("""
 SELECT category, COUNT(*) AS incident_count,
     ROUND(AVG(mttr_hours), 2) AS avg_mttr_hours,
@@ -108,12 +108,12 @@ ORDER BY avg_mttr_hours DESC
 fig = go.Figure()
 fig.add_trace(go.Bar(
     y=df_category['CATEGORY'], x=df_category['AVG_MTTR_HOURS'],
-    name='平均MTTR', orientation='h', marker_color='#29B5E8',
+    name='Avg MTTR', orientation='h', marker_color='#29B5E8',
     text=df_category['AVG_MTTR_HOURS'], textposition='outside'
 ))
 fig.update_layout(
-    title='カテゴリ別 平均MTTR 比較（時間）',
-    xaxis_title='MTTR（時間）', yaxis_title='カテゴリ',
+    title='Average MTTR by Category (hours)',
+    xaxis_title='MTTR (hours)', yaxis_title='Category',
     height=400, template='plotly_white'
 )
 fig.show()
@@ -121,10 +121,10 @@ fig.show()
 
 ---
 
-## Step 5: 優先度別 SLA 遵守率
+## Step 5: SLA Compliance Rate by Priority
 
 ```python
-# セル 4: 優先度別SLA遵守率（ドーナツチャート + 棒グラフ）
+# Cell 4: SLA compliance rate by priority (donut chart + bar chart)
 df_sla = session.sql("""
 SELECT priority_label, COUNT(*) AS total,
     COUNT(CASE WHEN sla_met = TRUE THEN 1 END) AS met_count,
@@ -138,27 +138,27 @@ ORDER BY priority_label
 """).to_pandas()
 
 fig = make_subplots(rows=1, cols=2, specs=[[{"type": "pie"}, {"type": "bar"}]],
-    subplot_titles=['SLA遵守率（全体）', '優先度別SLA遵守率'])
+    subplot_titles=['SLA Compliance Rate (Overall)', 'SLA Compliance Rate by Priority'])
 
 total_met = df_sla['MET_COUNT'].sum()
 total_missed = df_sla['MISSED_COUNT'].sum()
 
-fig.add_trace(go.Pie(labels=['SLA遵守', 'SLA未遵守'], values=[total_met, total_missed],
+fig.add_trace(go.Pie(labels=['SLA Met', 'SLA Missed'], values=[total_met, total_missed],
     hole=0.5, marker_colors=['#29B5E8', '#FF6F61'], textinfo='label+percent'), row=1, col=1)
 fig.add_trace(go.Bar(x=df_sla['PRIORITY_LABEL'], y=df_sla['SLA_PCT'],
     marker_color='#29B5E8', text=df_sla['SLA_PCT'].apply(lambda x: f'{x}%'),
     textposition='outside'), row=1, col=2)
 
-fig.update_layout(title='SLA 遵守率分析', height=450, showlegend=False, template='plotly_white')
+fig.update_layout(title='SLA Compliance Analysis', height=450, showlegend=False, template='plotly_white')
 fig.show()
 ```
 
 ---
 
-## Step 6: SLA ステージ別分析
+## Step 6: SLA Stage Analysis
 
 ```python
-# セル 5: SLAステージ別分析
+# Cell 5: SLA stage analysis
 df_stage = session.sql("""
 SELECT stage, COUNT(*) AS record_count,
     COUNT(CASE WHEN has_breached = TRUE THEN 1 END) AS breached_count,
@@ -169,24 +169,24 @@ ORDER BY record_count DESC
 """).to_pandas()
 
 fig = make_subplots(rows=1, cols=2, specs=[[{"type": "pie"}, {"type": "bar"}]],
-    subplot_titles=['SLAステージ分布', 'ステージ別 SLA違反件数'])
+    subplot_titles=['SLA Stage Distribution', 'SLA Breaches by Stage'])
 
 fig.add_trace(go.Pie(labels=df_stage['STAGE'], values=df_stage['RECORD_COUNT'],
     textinfo='label+percent', marker_colors=px.colors.qualitative.Set2), row=1, col=1)
 fig.add_trace(go.Bar(x=df_stage['STAGE'], y=df_stage['BREACHED_COUNT'],
     marker_color='#FF6F61', text=df_stage['BREACHED_COUNT'], textposition='outside'), row=1, col=2)
 
-fig.update_layout(title='SLA ステージ別分析（task_sla テーブル）', height=450,
+fig.update_layout(title='SLA Stage Analysis (task_sla table)', height=450,
     showlegend=False, template='plotly_white')
 fig.show()
 ```
 
 ---
 
-## Step 7: 曜日 × 時間帯ヒートマップ
+## Step 7: Day of Week x Hour Heatmap
 
 ```python
-# セル 6: 曜日×時間帯ヒートマップ
+# Cell 6: Day of week x hour heatmap
 df_heatmap = session.sql("""
 SELECT DAYOFWEEK(opened_at) AS dow_num, DAYNAME(opened_at) AS day_of_week,
     HOUR(opened_at) AS hour_of_day, COUNT(*) AS incident_count
@@ -204,17 +204,17 @@ pivot = pivot.reindex([d for d in day_order if d in pivot.index])
 fig = go.Figure(data=go.Heatmap(z=pivot.values,
     x=[f'{h}:00' for h in pivot.columns], y=pivot.index,
     colorscale='Blues', text=pivot.values, texttemplate='%{text}'))
-fig.update_layout(title='曜日 × 時間帯別 インシデント発生ヒートマップ',
-    xaxis_title='時間帯', yaxis_title='曜日', height=400, template='plotly_white')
+fig.update_layout(title='Incident Occurrence Heatmap by Day of Week x Hour',
+    xaxis_title='Hour', yaxis_title='Day of Week', height=400, template='plotly_white')
 fig.show()
 ```
 
 ---
 
-## Step 8: チーム別パフォーマンスサマリー
+## Step 8: Team Performance Summary
 
 ```python
-# セル 7: チーム別パフォーマンス（バブルチャート）
+# Cell 7: Team performance (bubble chart)
 df_team = session.sql("""
 SELECT assignment_group, total_incidents, resolved_incidents, open_incidents,
     avg_mttr_hours, sla_compliance_pct, top_category
@@ -225,28 +225,28 @@ ORDER BY total_incidents DESC
 fig = px.scatter(df_team, x='AVG_MTTR_HOURS', y='SLA_COMPLIANCE_PCT',
     size='TOTAL_INCIDENTS', color='ASSIGNMENT_GROUP',
     hover_data=['RESOLVED_INCIDENTS', 'OPEN_INCIDENTS', 'TOP_CATEGORY'],
-    title='チーム別パフォーマンス（MTTR vs SLA遵守率）',
-    labels={'AVG_MTTR_HOURS': '平均MTTR（時間）', 'SLA_COMPLIANCE_PCT': 'SLA遵守率（%）',
-            'TOTAL_INCIDENTS': '総インシデント数', 'ASSIGNMENT_GROUP': 'チーム'})
+    title='Team Performance (MTTR vs SLA Compliance)',
+    labels={'AVG_MTTR_HOURS': 'Avg MTTR (hours)', 'SLA_COMPLIANCE_PCT': 'SLA Compliance (%)',
+            'TOTAL_INCIDENTS': 'Total Incidents', 'ASSIGNMENT_GROUP': 'Team'})
 fig.update_layout(height=600, template='plotly_white')
 fig.show()
 ```
 
 ---
 
-## まとめ
+## Summary
 
-このパートで実施したこと：
+What was accomplished in this part:
 
-1. Workspace Notebook（.ipynb）を作成し、Python + SQL の分析環境を構築
-2. 以下の 6 つの分析・可視化を実施：
-   - **月次インシデント発生トレンド**: 棒グラフ + 折れ線グラフの複合チャート
-   - **カテゴリ別 MTTR 比較**: 横棒グラフ
-   - **優先度別 SLA 遵守率**: ドーナツチャート + 棒グラフ
-   - **SLA ステージ別分析**: task_sla データの円グラフ + 棒グラフ
-   - **曜日 × 時間帯ヒートマップ**: インシデント発生パターンの把握
-   - **チーム別パフォーマンス**: バブルチャートで MTTR・SLA・件数を一覧
+1. Created a Workspace Notebook (.ipynb) and set up a Python + SQL analysis environment
+2. Performed the following 6 analyses and visualizations:
+   - **Monthly Incident Trend**: Combined bar chart + line chart
+   - **MTTR by Category**: Horizontal bar chart
+   - **SLA Compliance by Priority**: Donut chart + bar chart
+   - **SLA Stage Analysis**: Pie chart + bar chart from task_sla data
+   - **Day of Week x Hour Heatmap**: Understanding incident occurrence patterns
+   - **Team Performance**: Bubble chart showing MTTR, SLA, and incident counts at a glance
 
-> **ポイント**: Workspace Notebook では `session.sql("SELECT ...").to_pandas()` でデータを取得し、Python で可視化します。SQL と Python を同じ Notebook 内でシームレスに使い分けられます。
+> **Tip**: In Workspace Notebooks, retrieve data with `session.sql("SELECT ...").to_pandas()` and visualize with Python. SQL and Python can be seamlessly used together within the same Notebook.
 
-**次のパート**: [Part 4: Semantic View + Cortex Analyst 構築](part4_semantic_view.md) に進みます。
+**Next Part**: Proceed to [Part 4: Semantic View + Cortex Analyst Setup](part4_semantic_view.md).

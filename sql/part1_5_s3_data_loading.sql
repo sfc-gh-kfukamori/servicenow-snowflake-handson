@@ -1,22 +1,23 @@
 -- =============================================================================
--- Part 1.5: AWS S3 からのデータロード（外部データ連携）
+-- Part 1.5: Data Loading from AWS S3 (External Data Integration)
 -- =============================================================================
--- S3 に配置された IT インフラ イベントログ（5,000万行、10ファイル）を Snowflake にロードし、
--- ウェアハウスサイズによるパフォーマンスの違いを体験します。
+-- Load IT infrastructure event logs (50 million rows, 10 files) from S3 into
+-- Snowflake, and experience the performance difference based on warehouse size.
 --
--- AWS 連携情報:
---   AWS アカウント ID : 484577546576
---   IAM ロール        : oist-handson-snowflake-s3-role
---   S3 バケット       : s3://oist-handson/handson/ (ap-northeast-1)
+-- AWS integration info:
+--   AWS Account ID  : 484577546576
+--   IAM Role        : oist-handson-snowflake-s3-role
+--   S3 Bucket       : s3://oist-handson/handson/ (ap-northeast-1)
 -- =============================================================================
 
 USE ROLE ACCOUNTADMIN;
 USE SCHEMA SERVICENOW_HANDSON.ANALYTICS;
 
 -- -----------------------------------------------------------------------------
--- Step 1: イベントログテーブルの作成
--- S3 からロードするデータの受け皿となるテーブル
--- カラム: イベントID、タイムスタンプ、サーバー名、イベント種別、重要度、カテゴリ、説明、送信元IP
+-- Step 1: Create the event log table
+-- Target table for data loaded from S3
+-- Columns: event ID, timestamp, server name, event type, severity, category,
+--          description, source IP
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE TABLE IT_EVENT_LOGS (
     event_id        STRING,
@@ -30,10 +31,11 @@ CREATE OR REPLACE TABLE IT_EVENT_LOGS (
 );
 
 -- -----------------------------------------------------------------------------
--- Step 2: Storage Integration の作成
--- Snowflake が AWS IAM ロールを使って S3 バケットにアクセスするための設定
--- 作成後、DESC INTEGRATION で表示される IAM_USER_ARN と EXTERNAL_ID を
--- AWS 側の IAM ロール信頼ポリシーに設定する必要がある（講師が事前に設定済み）
+-- Step 2: Create the Storage Integration
+-- Configuration for Snowflake to access the S3 bucket using an AWS IAM role.
+-- After creation, the IAM_USER_ARN and EXTERNAL_ID shown by DESC INTEGRATION
+-- must be set in the AWS IAM role trust policy (pre-configured by the
+-- instructor).
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE STORAGE INTEGRATION s3_handson_integration
   TYPE = EXTERNAL_STAGE
@@ -42,13 +44,13 @@ CREATE OR REPLACE STORAGE INTEGRATION s3_handson_integration
   ENABLED = TRUE
   STORAGE_ALLOWED_LOCATIONS = ('s3://oist-handson/handson/');
 
--- Snowflake 側の情報を確認（AWS IAM 信頼ポリシーに必要）
+-- Verify Snowflake-side info (needed for the AWS IAM trust policy)
 DESC INTEGRATION s3_handson_integration;
 
 -- -----------------------------------------------------------------------------
--- Step 3: External Stage の作成
--- Storage Integration を使って S3 バケットを Snowflake のステージとしてマウント
--- FILE_FORMAT でCSV形式・GZIP圧縮・ヘッダースキップを指定
+-- Step 3: Create the External Stage
+-- Mount the S3 bucket as a Snowflake stage using the Storage Integration.
+-- FILE_FORMAT specifies CSV format, GZIP compression, and header skip.
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE STAGE S3_EVENT_STAGE
   STORAGE_INTEGRATION = s3_handson_integration
@@ -60,14 +62,14 @@ CREATE OR REPLACE STAGE S3_EVENT_STAGE
     FIELD_OPTIONALLY_ENCLOSED_BY = '"'
   );
 
--- S3 上のファイル一覧を確認（10ファイルが表示されるはず）
+-- Verify the file listing on S3 (10 files should be displayed)
 LIST @S3_EVENT_STAGE;
 
 -- -----------------------------------------------------------------------------
--- Step 4.1: XS（X-Small）ウェアハウスでロード
--- まず最小サイズのウェアハウスでロード時間を計測する
--- SUSPEND→RESUME でウェアハウスキャッシュをクリアし、公平な比較を行う
--- 参考値: 約30秒
+-- Step 4.1: Load with XS (X-Small) warehouse
+-- First, measure load time using the smallest warehouse size.
+-- SUSPEND -> RESUME to clear the warehouse cache for a fair comparison.
+-- Reference: approx. 30 seconds
 -- -----------------------------------------------------------------------------
 ALTER WAREHOUSE COMPUTE_WH SET WAREHOUSE_SIZE = 'XSMALL';
 ALTER WAREHOUSE COMPUTE_WH SUSPEND;
@@ -77,25 +79,26 @@ COPY INTO IT_EVENT_LOGS
   FROM @S3_EVENT_STAGE
   PATTERN = '.*it_event_logs_[0-9]+\.csv\.gz';
 
--- Query History でロード時間を記録してください
+-- Record the load time from Query History
 
--- ロード結果の確認
+-- Verify load results
 SELECT COUNT(*) AS row_count FROM IT_EVENT_LOGS;
 SELECT * FROM IT_EVENT_LOGS LIMIT 5;
 
 -- -----------------------------------------------------------------------------
--- Step 4.2: テーブルをクリアして再ロード準備
+-- Step 4.2: Clear the table to prepare for reload
 -- -----------------------------------------------------------------------------
 TRUNCATE TABLE IT_EVENT_LOGS;
 
--- クリア確認
+-- Verify table is cleared
 SELECT * FROM IT_EVENT_LOGS;
 
 -- -----------------------------------------------------------------------------
--- Step 4.3: M（Medium）ウェアハウスでロード
--- ウェアハウスサイズを上げて同じデータをロードし、パフォーマンス差を確認
--- 参考値: 約14秒（XSの約2倍高速）
--- Mは4ノードで10ファイルを並列処理するため、XS（1ノード）より高速
+-- Step 4.3: Load with M (Medium) warehouse
+-- Increase the warehouse size and load the same data to compare performance.
+-- Reference: approx. 14 seconds (about 2x faster than XS)
+-- Medium uses 4 nodes to process 10 files in parallel, making it faster
+-- than XS (1 node).
 -- -----------------------------------------------------------------------------
 ALTER WAREHOUSE COMPUTE_WH SET WAREHOUSE_SIZE = 'MEDIUM';
 ALTER WAREHOUSE COMPUTE_WH SUSPEND;
@@ -105,24 +108,24 @@ COPY INTO IT_EVENT_LOGS
   FROM @S3_EVENT_STAGE
   PATTERN = '.*it_event_logs_[0-9]+\.csv\.gz';
 
--- Query History でロード時間を記録してください
+-- Record the load time from Query History
 
 -- -----------------------------------------------------------------------------
--- Step 4.4: ウェアハウスを元に戻す（コスト節約）
+-- Step 4.4: Reset warehouse size (cost saving)
 -- -----------------------------------------------------------------------------
 ALTER WAREHOUSE COMPUTE_WH SET WAREHOUSE_SIZE = 'XSMALL';
 
 -- -----------------------------------------------------------------------------
--- Step 5: ロードデータの確認
+-- Step 5: Verify loaded data
 -- -----------------------------------------------------------------------------
 
--- 件数確認（5,000万行が期待値）
+-- Row count check (expected: 50 million rows)
 SELECT COUNT(*) AS total_rows FROM IT_EVENT_LOGS;
 
--- サンプルデータ
+-- Sample data
 SELECT * FROM IT_EVENT_LOGS LIMIT 10;
 
--- カテゴリ別集計
+-- Aggregation by category
 SELECT
     category,
     COUNT(*) AS event_count,
@@ -134,9 +137,10 @@ GROUP BY category
 ORDER BY event_count DESC;
 
 -- -----------------------------------------------------------------------------
--- Step 6: イベントログ × インシデント 突合分析用 Dynamic Table
--- イベントログとインシデントをカテゴリ+日付で突合し、相関分析を可能にする
--- 「イベント多発日にインシデントも多いか？」「CRITICALイベントとの相関は？」を分析
+-- Step 6: Dynamic Table for event log x incident correlation analysis
+-- Correlate event logs and incidents by category + date for correlation analysis.
+-- Analyze: "Are incidents higher on days with many events?" and
+-- "Is there correlation with CRITICAL events?"
 -- -----------------------------------------------------------------------------
 CREATE OR REPLACE DYNAMIC TABLE DT_EVENT_INCIDENT_CORRELATION
   TARGET_LAG = '1 hour'

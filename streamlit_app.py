@@ -1,17 +1,17 @@
 # =============================================================================
-# ServiceNow IT運用支援 Streamlit アプリ
+# ServiceNow IT Operations Support Streamlit App
 # =============================================================================
-# Streamlit in Snowflake (SiS) で動作するダッシュボード + AI チャットアプリ
+# Dashboard + AI Chat app running on Streamlit in Snowflake (SiS)
 #
-# 3つのタブ:
-#   1. ダッシュボード: KPI、月次推移、カテゴリ別、チーム別パフォーマンス
-#   2. 相関分析: S3イベントログ × ServiceNowインシデントの突合分析
-#   3. AIチャット: Cortex Agent (DATA_AGENT_RUN) による自然言語データ分析
+# 3 Tabs:
+#   1. Dashboard: KPIs, monthly trends, by-category, team performance
+#   2. Correlation Analysis: S3 event logs x ServiceNow incident correlation
+#   3. AI Chat: Natural language data analysis via Cortex Agent (DATA_AGENT_RUN)
 #
-# 注意: SiS は古い Streamlit バージョンのため以下の制約あり:
-#   - st.chat_input / st.chat_message は使えない → st.form + st.text_input
-#   - st.rerun() は使えない → st.experimental_rerun()
-#   - st.dataframe() の hide_index 引数は使えない
+# Note: SiS uses an older Streamlit version with the following limitations:
+#   - st.chat_input / st.chat_message are unavailable -> use st.form + st.text_input
+#   - st.rerun() is unavailable -> use st.experimental_rerun()
+#   - st.dataframe() hide_index argument is unavailable
 # =============================================================================
 
 import streamlit as st
@@ -19,12 +19,12 @@ import json
 import pandas as pd
 from snowflake.snowpark.context import get_active_session
 
-st.set_page_config(page_title="IT運用支援AIエージェント", page_icon="🤖", layout="wide")
+st.set_page_config(page_title="IT Ops AI Agent", page_icon="🤖", layout="wide")
 
-# エージェントの完全修飾名（Part 5 で作成した Cortex Agent）
+# Fully qualified name of the agent (Cortex Agent created in Part 5)
 AGENT_FQN = "SERVICENOW_HANDSON.ANALYTICS.IT_OPS_AGENT"
 
-# Snowpark セッション（SiS では get_active_session() で取得）
+# Snowpark session (obtained via get_active_session() in SiS)
 session = get_active_session()
 
 CUSTOM_CSS = """
@@ -62,8 +62,8 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 
 # ======== Agent functions ========
-# DATA_AGENT_RUN を呼び出し、レスポンス JSON をパースする
-# レスポンス形式: {content: [{type: "thinking"}, {type: "tool_use"}, {type: "text"}]}
+# Calls DATA_AGENT_RUN and parses the response JSON
+# Response format: {content: [{type: "thinking"}, {type: "tool_use"}, {type: "text"}]}
 
 def call_agent(question):
     request_body = json.dumps({
@@ -77,13 +77,13 @@ def call_agent(question):
     ).collect()
 
     if not result:
-        return {"text": "エージェントから応答がありませんでした。", "steps": []}
+        return {"text": "No response received from the agent.", "steps": []}
 
     raw = result[0]["RESPONSE"]
     try:
         resp = json.loads(raw) if isinstance(raw, str) else raw
     except (json.JSONDecodeError, TypeError):
-        return {"text": f"パースエラー: {str(raw)[:300]}", "steps": []}
+        return {"text": f"Parse error: {str(raw)[:300]}", "steps": []}
 
     text, steps, content_items = "", [], []
     if isinstance(resp, dict) and "content" in resp:
@@ -112,7 +112,7 @@ def call_agent(question):
                         if sql_text:
                             steps.append({"type": "sql", "text": sql_text})
 
-    return {"text": text or "応答テキストを取得できませんでした。", "steps": steps}
+    return {"text": text or "Unable to retrieve response text.", "steps": steps}
 
 
 def render_user_message(content):
@@ -121,20 +121,20 @@ def render_user_message(content):
 
 def render_agent_message(result):
     if result.get("steps"):
-        with st.expander("🔧 エージェントの処理ステップ", expanded=False):
+        with st.expander("🔧 Agent Processing Steps", expanded=False):
             for step in result["steps"]:
                 if step["type"] == "thinking":
                     st.markdown(f'<div class="thinking-box">💭 {step["text"][:200]}</div>', unsafe_allow_html=True)
                 elif step["type"] == "tool":
-                    st.markdown(f'<div class="tool-box">🔧 <b>{step["name"]}</b> を使用</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div class="tool-box">🔧 Used <b>{step["name"]}</b></div>', unsafe_allow_html=True)
                 elif step["type"] == "sql":
                     st.code(step["text"], language="sql")
     st.markdown(f'<div class="agent-bubble">{result["text"]}</div><div class="clearfix"></div>', unsafe_allow_html=True)
 
 
 # ======== Dashboard functions ========
-# DT_INCIDENT_ENRICHED, DT_TEAM_PERFORMANCE を集計してKPIとチャートを表示
-# @st.cache_data(ttl=300) で5分間キャッシュしてクエリ回数を削減
+# Aggregates DT_INCIDENT_ENRICHED and DT_TEAM_PERFORMANCE to display KPIs and charts
+# @st.cache_data(ttl=300) caches for 5 minutes to reduce query frequency
 
 @st.cache_data(ttl=300)
 def load_kpis():
@@ -194,82 +194,82 @@ def load_team_perf():
 
 
 def render_dashboard():
-    st.markdown("## 📊 インシデントダッシュボード")
+    st.markdown("## 📊 Incident Dashboard")
 
     try:
         kpis = load_kpis()
         k = kpis.iloc[0]
 
         c1, c2, c3, c4 = st.columns(4)
-        c1.metric("総インシデント数", f"{int(k['TOTAL_INCIDENTS']):,}")
-        c2.metric("オープン件数", f"{int(k['OPEN_INCIDENTS']):,}")
-        c3.metric("平均MTTR（時間）", f"{k['AVG_MTTR']:.1f}")
-        c4.metric("SLA遵守率", f"{k['SLA_PCT']:.1f}%")
+        c1.metric("Total Incidents", f"{int(k['TOTAL_INCIDENTS']):,}")
+        c2.metric("Open Incidents", f"{int(k['OPEN_INCIDENTS']):,}")
+        c3.metric("Avg MTTR (hours)", f"{k['AVG_MTTR']:.1f}")
+        c4.metric("SLA Compliance Rate", f"{k['SLA_PCT']:.1f}%")
     except Exception as e:
-        st.error(f"KPI取得エラー: {e}")
+        st.error(f"KPI retrieval error: {e}")
 
     st.divider()
 
     col1, col2 = st.columns(2)
 
     with col1:
-        st.markdown("### 📈 月次インシデント推移")
+        st.markdown("### 📈 Monthly Incident Trend")
         try:
             df_monthly = load_monthly_trend()
             if not df_monthly.empty:
                 st.bar_chart(df_monthly.set_index("MONTH")["INCIDENTS"])
             else:
-                st.info("データがありません")
+                st.info("No data available")
         except Exception as e:
-            st.error(f"月次データ取得エラー: {e}")
+            st.error(f"Monthly data retrieval error: {e}")
 
     with col2:
-        st.markdown("### 🏷️ カテゴリ別インシデント数")
+        st.markdown("### 🏷️ Incidents by Category")
         try:
             df_cat = load_category_stats()
             if not df_cat.empty:
                 st.bar_chart(df_cat.set_index("CATEGORY")["INCIDENTS"])
             else:
-                st.info("データがありません")
+                st.info("No data available")
         except Exception as e:
-            st.error(f"カテゴリデータ取得エラー: {e}")
+            st.error(f"Category data retrieval error: {e}")
 
     st.divider()
 
     col3, col4 = st.columns(2)
 
     with col3:
-        st.markdown("### 🎯 優先度別分布")
+        st.markdown("### 🎯 Priority Distribution")
         try:
             df_pri = load_priority_dist()
             if not df_pri.empty:
                 st.bar_chart(df_pri.set_index("PRIORITY_LABEL")["INCIDENTS"])
             else:
-                st.info("データがありません")
+                st.info("No data available")
         except Exception as e:
-            st.error(f"優先度データ取得エラー: {e}")
+            st.error(f"Priority data retrieval error: {e}")
 
     with col4:
-        st.markdown("### 👥 チーム別パフォーマンス")
+        st.markdown("### 👥 Team Performance")
         try:
             df_team = load_team_perf()
             if not df_team.empty:
                 st.dataframe(df_team.rename(columns={
-                    "ASSIGNMENT_GROUP": "チーム",
-                    "TOTAL_INCIDENTS": "件数",
-                    "AVG_MTTR_HOURS": "平均MTTR(h)",
-                    "SLA_COMPLIANCE_PCT": "SLA遵守率(%)",
-                    "TOP_CATEGORY": "主カテゴリ"
+                    "ASSIGNMENT_GROUP": "Team",
+                    "TOTAL_INCIDENTS": "Count",
+                    "AVG_MTTR_HOURS": "Avg MTTR (h)",
+                    "SLA_COMPLIANCE_PCT": "SLA Compliance (%)",
+                    "TOP_CATEGORY": "Top Category"
                 }))
             else:
-                st.info("データがありません")
+                st.info("No data available")
         except Exception as e:
-            st.error(f"チームデータ取得エラー: {e}")
+            st.error(f"Team data retrieval error: {e}")
 
 
 # ======== Correlation Tab ========
-# S3 からロードした IT イベントログと ServiceNow インシデントの突合分析
-# DT_EVENT_INCIDENT_CORRELATION（日別×カテゴリ別の集計DT）を利用
+# Correlation analysis between IT event logs loaded from S3 and ServiceNow incidents
+# Uses DT_EVENT_INCIDENT_CORRELATION (daily x category aggregation DT)
 
 @st.cache_data(ttl=300)
 def load_correlation():
@@ -296,38 +296,38 @@ def load_event_summary():
 
 
 def render_correlation():
-    st.markdown("## 🔗 イベント × インシデント相関分析")
-    st.caption("S3 からロードした IT イベントログと ServiceNow インシデントの突合")
+    st.markdown("## 🔗 Event x Incident Correlation Analysis")
+    st.caption("Correlation between IT event logs loaded from S3 and ServiceNow incidents")
 
     try:
         df_summary = load_event_summary()
         if df_summary.empty:
-            st.warning("DT_EVENT_INCIDENT_CORRELATION にデータがありません。Part 1.5 を完了してください。")
+            st.warning("No data in DT_EVENT_INCIDENT_CORRELATION. Please complete Part 1.5.")
             return
 
         c1, c2, c3 = st.columns(3)
-        c1.metric("総イベント数", f"{int(df_summary['TOTAL_EVENTS'].sum()):,}")
-        c2.metric("CRITICAL イベント", f"{int(df_summary['TOTAL_CRITICAL'].sum()):,}")
-        c3.metric("関連インシデント", f"{int(df_summary['TOTAL_INCIDENTS'].sum()):,}")
+        c1.metric("Total Events", f"{int(df_summary['TOTAL_EVENTS'].sum()):,}")
+        c2.metric("CRITICAL Events", f"{int(df_summary['TOTAL_CRITICAL'].sum()):,}")
+        c3.metric("Related Incidents", f"{int(df_summary['TOTAL_INCIDENTS'].sum()):,}")
 
         st.divider()
 
         col1, col2 = st.columns(2)
         with col1:
-            st.markdown("### カテゴリ別 イベント vs インシデント")
+            st.markdown("### Events vs Incidents by Category")
             st.dataframe(df_summary.rename(columns={
-                "CATEGORY": "カテゴリ",
-                "TOTAL_EVENTS": "イベント数",
+                "CATEGORY": "Category",
+                "TOTAL_EVENTS": "Events",
                 "TOTAL_CRITICAL": "CRITICAL",
-                "TOTAL_INCIDENTS": "インシデント数"
+                "TOTAL_INCIDENTS": "Incidents"
             }))
 
         with col2:
-            st.markdown("### カテゴリ別イベント数")
+            st.markdown("### Events by Category")
             st.bar_chart(df_summary.set_index("CATEGORY")["TOTAL_EVENTS"])
 
         st.divider()
-        st.markdown("### 日別 イベント × インシデント推移")
+        st.markdown("### Daily Event x Incident Trend")
         df_corr = load_correlation()
         if not df_corr.empty:
             df_daily = df_corr.groupby("EVENT_DATE").agg(
@@ -336,24 +336,24 @@ def render_correlation():
 
     except Exception as e:
         if "does not exist" in str(e).lower():
-            st.info("DT_EVENT_INCIDENT_CORRELATION がまだ作成されていません。Part 1.5 を完了すると表示されます。")
+            st.info("DT_EVENT_INCIDENT_CORRELATION has not been created yet. It will appear after completing Part 1.5.")
         else:
-            st.error(f"相関データ取得エラー: {e}")
+            st.error(f"Correlation data retrieval error: {e}")
 
 
 # ======== Chat Tab ========
-# Cortex Agent (DATA_AGENT_RUN) を使った対話型チャットUI
-# サンプル質問ボタン → pending_question → call_agent → 結果表示
+# Interactive chat UI using Cortex Agent (DATA_AGENT_RUN)
+# Sample question button -> pending_question -> call_agent -> display result
 
 def render_chat():
-    st.markdown("## 🤖 AIエージェント")
-    st.caption("ServiceNow インシデントデータについて自然言語で質問できます")
+    st.markdown("## 🤖 AI Agent")
+    st.caption("Ask questions about ServiceNow incident data in natural language")
 
     SAMPLE_QUESTIONS = [
-        "📊 カテゴリ別の平均MTTRを教えて",
-        "🎯 SLA違反の件数は？",
-        "🔍 ネットワーク関連のインシデントを検索して",
-        "👥 チーム別のパフォーマンスを比較して",
+        "📊 Show average MTTR by category",
+        "🎯 How many SLA violations are there?",
+        "🔍 Search for network-related incidents",
+        "👥 Compare team performance",
     ]
 
     if not st.session_state.messages and st.session_state.pending_question is None:
@@ -375,11 +375,11 @@ def render_chat():
         st.session_state.pending_question = None
         st.session_state.messages.append({"role": "user", "content": question})
         render_user_message(question)
-        with st.spinner("🤖 エージェントが分析中..."):
+        with st.spinner("🤖 Agent is analyzing..."):
             try:
                 result = call_agent(question)
             except Exception as e:
-                result = {"text": f"エラー: {str(e)}", "steps": []}
+                result = {"text": f"Error: {str(e)}", "steps": []}
         st.session_state.messages.append({"role": "assistant", "result": result})
         render_agent_message(result)
 
@@ -387,24 +387,24 @@ def render_chat():
     with st.form("q_form", clear_on_submit=True):
         c1, c2 = st.columns([6, 1])
         with c1:
-            user_input = st.text_input("質問", key="q_input", label_visibility="collapsed",
-                                       placeholder="質問を入力してください...")
+            user_input = st.text_input("Question", key="q_input", label_visibility="collapsed",
+                                       placeholder="Enter your question...")
         with c2:
-            submitted = st.form_submit_button("送信")
+            submitted = st.form_submit_button("Submit")
 
     if submitted and user_input.strip():
         st.session_state.pending_question = user_input.strip()
         st.experimental_rerun()
 
 
-# ======== Main: タブ構成とサイドバー ========
+# ======== Main: Tab layout and sidebar ========
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "pending_question" not in st.session_state:
     st.session_state.pending_question = None
 
-tab1, tab2, tab3 = st.tabs(["📊 ダッシュボード", "🔗 相関分析", "🤖 AIチャット"])
+tab1, tab2, tab3 = st.tabs(["📊 Dashboard", "🔗 Correlation", "🤖 AI Chat"])
 
 with tab1:
     render_dashboard()
@@ -416,19 +416,19 @@ with tab3:
     render_chat()
 
 with st.sidebar:
-    st.markdown("### IT運用インテリジェンス")
+    st.markdown("### IT Operations Intelligence")
     st.markdown("""
-**ServiceNow × Snowflake**
+**ServiceNow x Snowflake**
 
-📊 **ダッシュボード** — KPI・チャートで現状把握
-🔗 **相関分析** — イベントログ×インシデント突合
-🤖 **AIチャット** — Cortex Agent で深掘り分析
+📊 **Dashboard** — Monitor current status with KPIs & charts
+🔗 **Correlation** — Event log x incident correlation
+🤖 **AI Chat** — Deep analysis with Cortex Agent
     """)
     st.divider()
-    st.markdown("**データソース:**")
+    st.markdown("**Data Sources:**")
     st.markdown("- DT_INCIDENT_ENRICHED\n- DT_TEAM_PERFORMANCE\n- DT_EVENT_INCIDENT_CORRELATION\n- Cortex Search Service")
     st.divider()
-    if st.button("🗑️ チャット履歴リセット"):
+    if st.button("🗑️ Reset Chat History"):
         st.session_state.messages = []
         st.session_state.pending_question = None
         st.experimental_rerun()
