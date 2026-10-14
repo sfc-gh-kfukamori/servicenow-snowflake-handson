@@ -10,7 +10,7 @@
 #
 # Note: SiS uses an older Streamlit version with the following limitations:
 #   - st.chat_input / st.chat_message are unavailable -> use st.form + st.text_input
-#   - st.rerun() is unavailable -> use st.experimental_rerun()
+#   - st.rerun() is used to refresh the app after state changes
 #   - st.dataframe() hide_index argument is unavailable
 # =============================================================================
 
@@ -362,7 +362,7 @@ def render_chat():
             with cols[i]:
                 if st.button(q, key=f"s_{i}"):
                     st.session_state.pending_question = q.split(" ", 1)[1] if " " in q else q
-                    st.experimental_rerun()
+                    st.rerun()
 
     for msg in st.session_state.messages:
         if msg["role"] == "user":
@@ -394,7 +394,7 @@ def render_chat():
 
     if submitted and user_input.strip():
         st.session_state.pending_question = user_input.strip()
-        st.experimental_rerun()
+        st.rerun()
 
 
 # ======== Main: Tab layout and sidebar ========
@@ -431,4 +431,4 @@ with st.sidebar:
     if st.button("🗑️ Reset Chat History"):
         st.session_state.messages = []
         st.session_state.pending_question = None
-        st.experimental_rerun()
+        st.rerun()
